@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>CBMEL · Bitácora de Emergencias Compartida</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root{
+  --bg:#0C0F14; --panel:#151A22; --panel2:#1B212B; --line:#28303C;
+  --ink:#E8ECF2; --muted:#8A94A3; --dim:#5C6675;
+  --red:#E4322B; --amber:#F5871F; --blue:#2E7CE4; --lime:#C6D400;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif}
+body{padding:0 0 40px}
+a{color:inherit}
+.wrap{max-width:1500px;margin:0 auto;padding:0 20px}
+header{border-bottom:1px solid var(--line);background:linear-gradient(180deg,#11151C,#0C0F14);position:sticky;top:0;z-index:1000}
+.hbar{display:flex;align-items:center;gap:18px;padding:14px 20px;max-width:1500px;margin:0 auto}
+.badge{width:44px;height:44px;border-radius:8px;background:var(--red);display:grid;place-items:center;font-family:Oswald;font-weight:700;font-size:20px;color:#fff;letter-spacing:.5px;box-shadow:0 0 0 1px #ff5a4d55,0 4px 18px #e4322b40}
+.htxt h1{font-family:Oswald;font-weight:600;font-size:20px;margin:0;letter-spacing:.6px;text-transform:uppercase}
+.htxt p{margin:2px 0 0;color:var(--muted);font-size:12px;letter-spacing:.3px}
+.hmeta{margin-left:auto;text-align:right;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)}
+.hmeta b{color:var(--ink)}
+.live{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--red);box-shadow:0 0 0 0 #e4322b;animation:pulse 1.8s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 #e4322baa}70%{box-shadow:0 0 0 7px #e4322b00}100%{box-shadow:0 0 0 0 #e4322b00}}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin:20px 0}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;position:relative;overflow:hidden}
+.kpi .lab{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+.kpi .val{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:30px;line-height:1.1;margin-top:6px}
+.kpi .sub{font-size:11px;color:var(--dim);margin-top:2px}
+.kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--red)}
+.kpi.k2::after{background:var(--blue)} .kpi.k3::after{background:var(--amber)}
+.kpi.k4::after{background:var(--lime)} .kpi.k5::after{background:#A15CE0} .kpi.k6::after{background:#25B0A8}
+.grid{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;margin-bottom:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.card h2{font-family:Oswald;font-weight:500;font-size:13px;text-transform:uppercase;letter-spacing:1px;margin:0;padding:13px 16px;border-bottom:1px solid var(--line);color:var(--ink);display:flex;align-items:center;gap:8px}
+.card h2 .tag{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);font-weight:500;letter-spacing:0}
+.cbody{padding:14px 16px}
+#map{height:560px;width:100%;background:#0a0d12}
+.leaflet-container{background:#0a0d12}
+.mapctrl{display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;align-items:center}
+.chip{font-size:11px;padding:5px 10px;border:1px solid var(--line);border-radius:20px;color:var(--muted);cursor:pointer;user-select:none;transition:.15s;display:inline-flex;align-items:center;gap:6px}
+.chip:hover{border-color:var(--dim);color:var(--ink)}
+.chip.off{opacity:.35}
+.chip i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.toggle{margin-left:auto;display:flex;gap:6px}
+.tbtn{font-size:11px;padding:5px 12px;border:1px solid var(--line);border-radius:6px;color:var(--muted);cursor:pointer;background:var(--panel2)}
+.tbtn.active{color:#fff;border-color:var(--red);background:#e4322b22}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.chartbox{position:relative;height:210px}
+.chartbox.tall{height:250px}
+.tablewrap{max-height:420px;overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{position:sticky;top:0;background:var(--panel2);text-align:left;padding:9px 12px;font-family:Oswald;font-weight:500;letter-spacing:.5px;text-transform:uppercase;font-size:11px;color:var(--muted);border-bottom:1px solid var(--line)}
+td{padding:9px 12px;border-bottom:1px solid #1f2530;color:var(--ink)}
+tr:hover td{background:#1a2029}
+.pill{font-size:10.5px;padding:2px 8px;border-radius:20px;color:#0c0f14;font-weight:600;white-space:nowrap}
+.mono{font-family:'JetBrains Mono',monospace}
+.rt-ok{color:#5fd08a} .rt-bad{color:#f0864f}
+.leaflet-popup-content-wrapper{background:#11151c;color:var(--ink);border:1px solid var(--line);border-radius:8px}
+.leaflet-popup-tip{background:#11151c}
+.pop b{font-family:Oswald;letter-spacing:.4px}
+.pop .k{color:var(--muted);font-size:11px}
+.footer{color:var(--dim);font-size:11px;margin-top:22px;line-height:1.7;border-top:1px solid var(--line);padding-top:16px}
+.note{background:#161b23;border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:6px;padding:10px 14px;font-size:12px;color:var(--muted);margin-top:14px}
+/* upload panel */
+.upload{border-left:3px solid var(--lime)!important}
+.uprow{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+.field input[type=date]{background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--ink);padding:8px 10px;font-family:'JetBrains Mono',monospace;font-size:12px}
+.filebtn{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:8px;background:var(--panel2);border:1px dashed var(--dim);border-radius:8px;padding:11px 16px;color:var(--ink);cursor:pointer;font-size:13px}
+.filebtn:hover{border-color:var(--lime);color:#fff}
+.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.gobtn{background:var(--red);border:none;border-radius:8px;color:#fff;font-family:Oswald;font-weight:600;letter-spacing:.5px;text-transform:uppercase;font-size:13px;padding:12px 22px;cursor:pointer}
+.gobtn:hover{background:#f4463e}
+.gobtn:disabled{opacity:.4;cursor:not-allowed}
+.status{font-size:12px;color:var(--muted);margin-top:12px;min-height:18px}
+.status.ok{color:#5fd08a} .status.err{color:#f0864f}
+.hint{font-size:11.5px;color:var(--dim);margin-top:8px;line-height:1.6}
+@media(max-width:1080px){.kpis{grid-template-columns:repeat(3,1fr)}.grid{grid-template-columns:1fr}.two{grid-template-columns:1fr}}
+
+/* gestión y hallazgos */
+.metricstrip{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px}
+.mmetric{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-height:72px}
+.mmetric .ml{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.65px}
+.mmetric .mv{font-family:'JetBrains Mono',monospace;font-size:19px;font-weight:700;margin-top:5px;color:var(--ink)}
+.mmetric .ms{font-size:10px;color:var(--dim);margin-top:2px}
+.findingsgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.finding{border:1px solid var(--line);border-left:4px solid #5B6472;background:#111720;border-radius:8px;padding:11px 12px;min-height:126px}
+.finding.high{border-left-color:#E4322B}.finding.medium{border-left-color:#F5871F}.finding.low{border-left-color:#2E7CE4}.finding.positive{border-left-color:#25B0A8}
+.finding .fh{display:flex;align-items:center;gap:7px;margin-bottom:6px}.finding .sev{font-size:9px;text-transform:uppercase;letter-spacing:.7px;font-weight:700;padding:2px 6px;border-radius:10px;background:#2a303a;color:#fff}.finding .ft{font-family:Oswald;font-size:13px;font-weight:600;letter-spacing:.3px}
+.finding .fe{font-size:11px;color:#B8C0CC;line-height:1.45}.finding .fa{font-size:10.5px;color:var(--muted);line-height:1.4;margin-top:6px;border-top:1px solid #252c36;padding-top:6px}
+.restricted-note{font-size:10.5px;color:var(--dim);margin-left:8px}
+@media(max-width:1080px){.metricstrip{grid-template-columns:repeat(3,1fr)}.findingsgrid{grid-template-columns:1fr 1fr}}
+@media(max-width:650px){.metricstrip{grid-template-columns:repeat(2,1fr)}.findingsgrid{grid-template-columns:1fr}}
+
+@media(max-width:560px){.kpis{grid-template-columns:repeat(2,1fr)}.hmeta{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="hbar">
+    <div class="badge">CB</div>
+    <div class="htxt">
+      <h1>Bitácora de Emergencias</h1>
+      <p>Cuerpo de Bomberos de Melipilla · Panel operativo geoespacial · <span style="color:#25B0A8">claves oficiales 2022</span></p>
+    </div>
+    <div class="hmeta">
+      <div class="live"><span class="dot"></span> Periodo analizado</div>
+      <div><b id="rango"></b></div>
+      <div id="syncState" style="margin-top:3px;font-size:10px;color:#25B0A8">Cargando datos compartidos…</div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <section class="kpis" id="kpis"></section>
+
+
+  <div class="card" style="margin-bottom:16px">
+    <h2>Hallazgos para la toma de decisiones <span class="tag" id="findtag"></span></h2>
+    <div class="cbody">
+      <div class="metricstrip" id="mgmtMetrics"></div>
+      <div class="findingsgrid" id="findingGrid"></div>
+      <div class="note">Los hallazgos son señales estadísticas automatizadas para priorizar revisión. No atribuyen causalidad por sí solos; deben contrastarse con antecedentes operacionales, distancia, disponibilidad de conductores y condiciones del incidente.</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Mapa de emergencias <span class="tag" id="maptag"></span></h2>
+      <div class="mapctrl" id="legend"></div>
+      <div class="mapctrl" style="border-bottom:none;padding-top:0">
+        <span style="font-size:11px;color:var(--dim)">Filtra por categoría tocando la leyenda.</span>
+        <div class="toggle">
+          <span class="tbtn active" data-mode="markers" id="mMarkers">Puntos</span>
+          <span class="tbtn" data-mode="heat" id="mHeat">Calor</span>
+        </div>
+      </div>
+      <div id="map"></div>
+    </div>
+
+    <div class="card">
+      <h2>Tipo de emergencia <span class="tag">clave 10</span></h2>
+      <div class="cbody"><div class="chartbox tall"><canvas id="catChart"></canvas></div></div>
+    </div>
+  </div>
+
+  <div class="two">
+    <div class="card">
+      <h2>Emergencias por día</h2>
+      <div class="cbody"><div class="chartbox"><canvas id="dayChart"></canvas></div></div>
+    </div>
+    <div class="card">
+      <h2>Distribución horaria <span class="tag">0–23 h</span></h2>
+      <div class="cbody"><div class="chartbox"><canvas id="hourChart"></canvas></div></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Tiempo de respuesta · Carta de control <span class="tag" id="sixtag"></span></h2>
+    <div class="cbody">
+      <div class="chartbox tall"><canvas id="ctrlChart"></canvas></div>
+      <div class="note" id="sixnote"></div>
+    </div>
+  </div>
+
+  <div class="two" style="margin-top:16px">
+    <div class="card">
+      <h2>Emergencias por carro <span class="tag" id="vehtag"></span></h2>
+      <div class="cbody"><div class="chartbox tall"><canvas id="vehChart"></canvas></div></div>
+    </div>
+    <div class="card">
+      <h2>Tiempo de respuesta por carro <span class="tag">minutos</span></h2>
+      <div class="tablewrap" style="max-height:290px">
+        <table id="vehTbl"><thead><tr>
+          <th>Carro</th><th>Desp.</th><th>Arribos</th><th>Cob.</th><th>Mediana</th><th>P90</th><th>≤ Obj.</th>
+        </tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Detalle de incidentes <span class="tag" id="tabletag"></span>
+      <button class="gobtn" id="reportBtn" disabled title="Ingrese la clave para habilitar el reporte" style="margin-left:auto;padding:7px 16px;font-size:12px">Generar informe PDF</button>
+    </h2>
+    <div class="tablewrap">
+      <table id="tbl"><thead><tr>
+        <th>Fecha / hora</th><th>Clave</th><th>Categoría</th><th>Sector</th>
+        <th>Carros (resp. min)</th><th>Resp. (min)</th><th>Descripción</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <!-- ====== PANEL DE CARGA ====== -->
+  <div class="card upload" style="margin-top:16px">
+    <h2>Actualizar con nuevos datos <span class="tag">acceso restringido</span></h2>
+    <div class="cbody">
+      <div id="lockRow" class="uprow">
+        <div class="field">
+          <label for="pass">Clave de acceso</label>
+          <input type="password" id="pass" placeholder="••••••" style="background:var(--panel2);border:1px solid var(--line);border-radius:6px;color:var(--ink);padding:8px 10px;font-family:'JetBrains Mono',monospace">
+        </div>
+        <button class="gobtn" id="unlockBtn" style="background:#25B0A8">Desbloquear</button>
+        <span style="font-size:12px;color:var(--dim)">Acceso protegido para carga CSV y generación del informe institucional.</span>
+      </div>
+      <div id="upRow" style="display:none">
+        <div class="uprow">
+          <label class="filebtn">
+            <span id="fileName">📂 Seleccionar CSV…</span>
+            <input type="file" id="csvInput" accept=".csv,text/csv">
+          </label>
+          <div class="field">
+            <label for="desde">Desde</label>
+            <input type="date" id="desde">
+          </div>
+          <div class="field">
+            <label for="hasta">Hasta</label>
+            <input type="date" id="hasta">
+          </div>
+          <button class="gobtn" id="goBtn" disabled>Cargar CSV y publicar</button>
+          <button class="gobtn" id="datesBtn" disabled style="background:#2E7CE4">Guardar solo fechas</button>
+          <button class="gobtn" id="lockBtn" style="background:#4A5160">Bloquear</button>
+        </div>
+        <div class="status" id="status"></div>
+        <div class="hint">
+          El CSV se envía al backend temporal de Colab, se procesa y queda respaldado en Google Drive.
+          Luego se publica un JSON común en GitHub: todos los visitantes reciben el mismo tablero. El botón
+          <b>Guardar solo fechas</b> reutiliza el CSV ya procesado y no exige volver a cargarlo.
+        </div>
+      </div>
+      <div class="status" id="lockStatus"></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Fuente: bitácora operativa CBMEL (registros de despacho con coordenadas GPS y estados 6-x). Cada punto corresponde a un despacho creado en el sistema.
+    El tiempo de respuesta es el primer arribo al lugar (estado 6-3) desde la creación del despacho. Las categorías se derivan de la familia de la clave 10 y son configurables.
+    <br>Visor público en GitHub Pages · actualización compartida mediante backend Colab + respaldo en Drive.
+    <br><span style="color:#25B0A8;font-family:'JetBrains Mono',monospace">■ Build: ETL por Despacho · categorías con código y descriptor · sincronización global · v7</span>
+  </div>
+</div>
+
+<script>
+/* ================= DATOS INICIALES ================= */
+const INITIAL = {"agg":{"target":8.0},"incidents":[{"hora":"2026-07-16 09:51","fecha":"2026-07-16","hh":9,"dia":"Thursday","clave":"10-4-1","subtipo":"Colisión hasta 3 lesionados o 1 atrapado","categoria":"10-4 · Rescate vehicular / accidente","color":"#38BDF8","sector":"RUTA G-380","desc":"RUTA G-380, KM 22 (INICIO CUESTA MALLARAUCO)","lat":-33.589036,"lon":-70.98366,"n_veh":2,"veh":"R-5, B-3","carros":[],"resp_min":null,"narrativa":"ANIBAL MEZA CORNEJO: SE RECORRE EL SECTOR NO ENCONTRANDO NADA","cierre_min":89.0,"control_min":null,"familia":"10-4","categoria_base":"Rescate vehicular / accidente","descriptor":"Colisión hasta 3 lesionados o 1 atrapado"},{"hora":"2026-07-16 10:53","fecha":"2026-07-16","hh":10,"dia":"Thursday","clave":"10-9","subtipo":"Llamado a otros servicios","categoria":"10-9 · Otros servicios","color":"#25B0A8","sector":"MERCED / ORTUZAR","desc":"MERCED / ORTUZAR","lat":-33.685046,"lon":-71.215329,"n_veh":1,"veh":"M-2","carros":[{"v":"M-2","r":8.7}],"resp_min":8.7,"narrativa":"CESAR CHACON: APOYO DE POSIBLE CAIDA DE OBJETO EN ALTURA","cierre_min":68.0,"control_min":null,"familia":"10-9","categoria_base":"Otros servicios","descriptor":"Llamado a otros servicios"},{"hora":"2026-07-16 10:59","fecha":"2026-07-16","hh":10,"dia":"Thursday","clave":"10-2-1","subtipo":"Fuego en pastizales o árboles pequeña/mediana magnitud","categoria":"10-2 · Incendio pastizal / basura","color":"#F5871F","sector":"SECTOR ULMEN","desc":"SECTOR ULMEN, LOS MAITENES","lat":-33.842562,"lon":-71.369253,"n_veh":1,"veh":"BF-6","carros":[{"v":"BF-6","r":11.2}],"resp_min":11.2,"narrativa":"ALBERTO RIQUELME: SE TRATA DE CAIDA DE ARBOL SOBRE TENDIDO ELECTRICO CONTROLA POR PROPIETARIOS","cierre_min":21.0,"control_min":17.0,"familia":"10-2","categoria_base":"Incendio pastizal / basura","descriptor":"Fuego en pastizales o árboles pequeña/mediana magnitud"},{"hora":"2026-07-16 11:48","fecha":"2026-07-16","hh":11,"dia":"Thursday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"SECTOR LAS ACACIAS","desc":"SECTOR LAS ACACIAS, CODIGUA (CALLEJON LAS AVESTRUCES)","lat":-33.756387,"lon":-71.320757,"n_veh":1,"veh":"B-7","carros":[{"v":"B-7","r":36.5}],"resp_min":36.5,"narrativa":"47 RODRIGO ACUÑA: SE TRATA CAIDA DE EUCALIPTO DE GRAN ENVERGADURA SOBRE DOMICILIO","cierre_min":97.0,"control_min":83.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-16 12:19","fecha":"2026-07-16","hh":12,"dia":"Thursday","clave":"10-2-1","subtipo":"Fuego en pastizales o árboles pequeña/mediana magnitud","categoria":"10-2 · Incendio pastizal / basura","color":"#F5871F","sector":"PARCELEROS SECTOR 5 DE POPETA / RUTA G-660 (SECTOR 4 POPETA ","desc":"PARCELEROS SECTOR 5 DE POPETA / RUTA G-660 (SECTOR 4 POPETA HACIA EL ESTERO)","lat":-33.840187,"lon":-71.27703,"n_veh":1,"veh":"BF-6","carros":[{"v":"BF-6","r":34.4}],"resp_min":34.4,"narrativa":"GUSTAVO FARIAS: SE TRATA DE PEQUEÑA QUEMA DE EUCALIPTO A ORILLA DE ESRTERO SIN PROPAGACION, NO SE TRABAJA SIN ACCESO A LA MAQUINA","cierre_min":67.0,"control_min":34.0,"familia":"10-2","categoria_base":"Incendio pastizal / basura","descriptor":"Fuego en pastizales o árboles pequeña/mediana magnitud"},{"hora":"2026-07-16 14:24","fecha":"2026-07-16","hh":14,"dia":"Thursday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"RUTA G-74-F / SARGENTO CANDELARIA","desc":"RUTA G-74-F / SARGENTO CANDELARIA","lat":-33.585604,"lon":-71.220394,"n_veh":1,"veh":"BF-5","carros":[{"v":"BF-5","r":11.0}],"resp_min":11.0,"narrativa":"HUGO PARRAGUES: SE TRATA DE CAIDA DE ARBOL APROX 7 MTRS DE ALTURA, SIN PELIGRO NI DAÑOS A ESTRUCTURA SE TRABAJA","cierre_min":57.0,"control_min":39.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-16 16:47","fecha":"2026-07-16","hh":16,"dia":"Thursday","clave":"10-7","subtipo":"Llamado eléctrico","categoria":"10-7 · Emergencia eléctrica","color":"#A15CE0","sector":"Las Camelias 1032","desc":"Las Camelias 1032, Melipilla, Región Metropolitana, Chile / LOS AROMOS","lat":-33.699229,"lon":-71.220942,"n_veh":1,"veh":"BX-7","carros":[],"resp_min":null,"narrativa":"CESAR CHACON: SE TRATA DE DESPRENDIMIENTO DE HUMO DESDE MEDIDOR ELECTRICO","cierre_min":26.0,"control_min":null,"familia":"10-7","categoria_base":"Emergencia eléctrica","descriptor":"Llamado eléctrico"},{"hora":"2026-07-16 20:27","fecha":"2026-07-16","hh":20,"dia":"Thursday","clave":"10-7","subtipo":"Llamado eléctrico","categoria":"10-7 · Emergencia eléctrica","color":"#A15CE0","sector":"POBLACION EMOS (CAMELIAS 1032)","desc":"POBLACION EMOS (CAMELIAS 1032)","lat":-33.700223,"lon":-71.220982,"n_veh":1,"veh":"BX-7","carros":[{"v":"BX-7","r":7.7}],"resp_min":7.7,"narrativa":"ACARGO 203 RODRIGO VALDIVIA  SE TRATA DE DESPERFECTO EN MEDIDOR DE ELECTRICIDAD","cierre_min":21.0,"control_min":13.0,"familia":"10-7","categoria_base":"Emergencia eléctrica","descriptor":"Llamado eléctrico"},{"hora":"2026-07-16 22:09","fecha":"2026-07-16","hh":22,"dia":"Thursday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"RUTA G-60","desc":"RUTA G-60, KM 25 (ALTOS DE POPETA) (PARCELA 23)","lat":-33.822764,"lon":-71.331277,"n_veh":1,"veh":"B-6","carros":[{"v":"B-6","r":9.9}],"resp_min":9.9,"narrativa":"A CARGO VOL 6TA CIA MARIO FUENTES SE TRATA DE ANEGAMIENTO DE CASA HABITACION  POR SANJA SE TRABAJA CON HERRAMIENTAS PARA DESVIAR EL FLUJO","cierre_min":88.0,"control_min":60.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-16 23:57","fecha":"2026-07-16","hh":23,"dia":"Thursday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"TACNA / ARICA (TACNA 1467 FRENTE A FUNDACION LAS ROSAS)","desc":"TACNA / ARICA (TACNA 1467 FRENTE A FUNDACION LAS ROSAS)","lat":-33.695135,"lon":-71.225225,"n_veh":1,"veh":"BX-7","carros":[{"v":"BX-7","r":5.5}],"resp_min":5.5,"narrativa":"A CARGO VOL 2DA CIA ,CESAR CHACON SE TRATA DE FILTRACION DE AGUAS LLUVIAS AL INTERIOR DE DOMICILIO NO SE TRABAJA","cierre_min":30.0,"control_min":16.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 01:36","fecha":"2026-07-17","hh":1,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"POBLACION SANTA CLARA","desc":"POBLACION SANTA CLARA, MALLARAUCO","lat":-33.586323,"lon":-71.082662,"n_veh":1,"veh":"BF-5","carros":[{"v":"BF-5","r":32.1}],"resp_min":32.1,"narrativa":"A CARGO VOL 5TA CIA SERGIO MESA SE TRATA DE EUCALIPTUS QUE CAE SOBRE TENDIDO DE MEDIANA TENSION PROVOCANDO EL CIERRE DEL PASO A 10 VIVIENDAS LAS CUALES SE ENCUENTRAN EN ESTE MOMENTO AISLADAS SE TRABAJA","cierre_min":113.0,"control_min":null,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 05:05","fecha":"2026-07-17","hh":5,"dia":"Friday","clave":"10-0-1","subtipo":"Estructura de menos de 2 pisos","categoria":"10-0 · Incendio estructural","color":"#E4322B","sector":"LOS ESPINOS / VICUNA MACKENNA","desc":"LOS ESPINOS / VICUNA MACKENNA","lat":-33.679205,"lon":-71.226353,"n_veh":3,"veh":"Q-2, B-3, BF-1","carros":[{"v":"B-3","r":4.5},{"v":"Q-2","r":7.0},{"v":"BF-1","r":7.3}],"resp_min":4.5,"narrativa":"ACARGO  203 RODRIGO VALDIVIA  SE TRATA DE DESPERFECTO EN ENCHUFE","cierre_min":30.0,"control_min":13.0,"familia":"10-0","categoria_base":"Incendio estructural","descriptor":"Estructura de menos de 2 pisos"},{"hora":"2026-07-17 06:58","fecha":"2026-07-17","hh":6,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"POBLACION PUANGUE","desc":"POBLACION PUANGUE, PUANGUE (PARCELA 9)","lat":-33.665589,"lon":-71.311802,"n_veh":1,"veh":"BF-1","carros":[{"v":"BF-1","r":30.6}],"resp_min":30.6,"narrativa":"A CARGO 104 JAVIER MORALES SE TRATA DE INUNDACION DE VIVIENDA SE TRABAJA","cierre_min":113.0,"control_min":104.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 07:14","fecha":"2026-07-17","hh":7,"dia":"Friday","clave":"10-7","subtipo":"Llamado eléctrico","categoria":"10-7 · Emergencia eléctrica","color":"#A15CE0","sector":"VII DE LINEA / LA CONCEPCION (POBLACION DOCTOR FERNANDEZ)","desc":"VII DE LINEA / LA CONCEPCION (POBLACION DOCTOR FERNANDEZ)","lat":-33.696768,"lon":-71.224695,"n_veh":1,"veh":"BX-7","carros":[{"v":"BX-7","r":7.0}],"resp_min":7.0,"narrativa":"A CARGO 203 RODRIGO VALDIVIA  SE TRATA DE DESPERFECTO EN CABLE QUE BAJA HACIA MEDIDOR DE CASA HABITACION","cierre_min":31.0,"control_min":17.0,"familia":"10-7","categoria_base":"Emergencia eléctrica","descriptor":"Llamado eléctrico"},{"hora":"2026-07-17 07:35","fecha":"2026-07-17","hh":7,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"JOSE MANUEL BENITEZ / POLITOF","desc":"JOSE MANUEL BENITEZ / POLITOF","lat":-33.695962,"lon":-71.216826,"n_veh":1,"veh":"BX-7","carros":[{"v":"BX-7","r":4.4}],"resp_min":4.4,"narrativa":"A CARGO 203 RODRIGO VALDIVIA SE TRATA DE INUNDACION DE CASA HABITACION , SE TRABAJA","cierre_min":61.0,"control_min":31.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 08:10","fecha":"2026-07-17","hh":8,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"SAN RAFAEL DE CODIGUA","desc":"SAN RAFAEL DE CODIGUA, CODIGUA (PARROQUIA SAN RAFAEL)","lat":-33.759787,"lon":-71.294551,"n_veh":1,"veh":"B-7","carros":[{"v":"B-7","r":16.2}],"resp_min":16.2,"narrativa":"A CARGO 47 RODRIGO ACUÑA ,SE TRATA DEINUNDACION EN CASA HABITACION SE TRABAJA CON HERRAMIENTAS MANUELES PARA CANALIZAR","cierre_min":41.0,"control_min":36.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 08:21","fecha":"2026-07-17","hh":8,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"SECTOR EL TRANQUE HUECHUN BAJO","desc":"SECTOR EL TRANQUE HUECHUN BAJO","lat":-33.709921,"lon":-71.303864,"n_veh":1,"veh":"BX-7","carros":[{"v":"BX-7","r":17.8}],"resp_min":17.8,"narrativa":"A CARGO RODRIGO VALDIVIA SE TRATA DE INUNDACION DE CASA HABITACION POR CAIDA DE AGUA DESDE CERRO","cierre_min":null,"control_min":46.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 08:31","fecha":"2026-07-17","hh":8,"dia":"Friday","clave":"10-7","subtipo":"Llamado eléctrico","categoria":"10-7 · Emergencia eléctrica","color":"#A15CE0","sector":"COLEGIO CRISTOBAL COLON","desc":"COLEGIO CRISTOBAL COLON","lat":-33.670593,"lon":-71.216306,"n_veh":1,"veh":"B-3","carros":[{"v":"B-3","r":9.3}],"resp_min":9.3,"narrativa":"A CARGO 11-A CRISTOBAL GOMEZ, SE TRATA DE ROTURA DE CABLE DE MEDIANA TENSION","cierre_min":89.0,"control_min":43.0,"familia":"10-7","categoria_base":"Emergencia eléctrica","descriptor":"Llamado eléctrico"},{"hora":"2026-07-17 08:49","fecha":"2026-07-17","hh":8,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"PLANTA DE REVISION TECNICA","desc":"PLANTA DE REVISION TECNICA","lat":-33.66698,"lon":-71.246929,"n_veh":1,"veh":"BF-1","carros":[{"v":"BF-1","r":10.0}],"resp_min":10.0,"narrativa":"A CARGO 104 JAVIER MORALES SE TRATA DE CASA HABITACION INUNDADA, SE EVALUA TRABAJO DE BOMBEROS","cierre_min":43.0,"control_min":28.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 09:10","fecha":"2026-07-17","hh":9,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"SECTOR EL TRANQUE HUECHUN BAJO","desc":"SECTOR EL TRANQUE HUECHUN BAJO","lat":-33.709921,"lon":-71.303864,"n_veh":1,"veh":"BX-7","carros":[{"v":"BX-7","r":3.3}],"resp_min":3.3,"narrativa":"A CARGO 203 RODRIGO VALDIVIA SE TRATA DE CASA HABITACION ANEGADA E TRABAJA EN ACEQUIA","cierre_min":8.0,"control_min":34.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 09:20","fecha":"2026-07-17","hh":9,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"POBLACION PUANGUE","desc":"POBLACION PUANGUE, PUANGUE","lat":-33.660831,"lon":-71.336514,"n_veh":1,"veh":"BF-1","carros":[{"v":"BF-1","r":22.1}],"resp_min":22.1,"narrativa":"A CARGO 104 JAVIER MORALES SE TRATA DE INUNDACION DE VIVIENDA POR DE DESBORDE DE ACEQUIA CON ADULTO MAYOR EN SU INTERIOR, SE TRABAJA","cierre_min":null,"control_min":null,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 09:23","fecha":"2026-07-17","hh":9,"dia":"Friday","clave":"10-7","subtipo":"Llamado eléctrico","categoria":"10-7 · Emergencia eléctrica","color":"#A15CE0","sector":"POBLACION DOCTOR FERNANDEZ","desc":"POBLACION DOCTOR FERNANDEZ","lat":-33.695813,"lon":-71.224262,"n_veh":1,"veh":"Q-2","carros":[{"v":"Q-2","r":9.7}],"resp_min":9.7,"narrativa":"A CARGO VOL 2° CIA LUIS CORNEJO SE TRATA DE DESPERFECTO EN ACOMETIDA DE DOMICILIO","cierre_min":31.0,"control_min":27.0,"familia":"10-7","categoria_base":"Emergencia eléctrica","descriptor":"Llamado eléctrico"},{"hora":"2026-07-17 09:25","fecha":"2026-07-17","hh":9,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"COLEGIO SAN JOSE DE MELIPILLA","desc":"COLEGIO SAN JOSE DE MELIPILLA","lat":-33.68706,"lon":-71.217619,"n_veh":1,"veh":"BF-5","carros":[],"resp_min":null,"narrativa":"EL MOLINO SAN JOSE, SAN JOSE , MELIPILLA.","cierre_min":37.0,"control_min":null,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 09:45","fecha":"2026-07-17","hh":9,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"POBLACION HUECHUN BAJO","desc":"POBLACION HUECHUN BAJO","lat":-33.713634,"lon":-71.287012,"n_veh":1,"veh":"BX-7","carros":[{"v":"BX-7","r":5.8}],"resp_min":5.8,"narrativa":"A CARGO 203 RODRIGO VALDIVIA SE TRATA DE DESBORDE DE CANAL, SE CAMBIA CLAVE A 10-16 POR AFECTACION A 10 CASA EN POBLACION HUECHUN","cierre_min":150.0,"control_min":null,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 10:19","fecha":"2026-07-17","hh":10,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"VICUNA MACKENNA / AVENIDA TRES PONIENTE","desc":"VICUNA MACKENNA / AVENIDA TRES PONIENTE","lat":-33.675868,"lon":-71.233955,"n_veh":1,"veh":"BF-3","carros":[{"v":"BF-3","r":3.8}],"resp_min":3.8,"narrativa":"A CARGO 43 ESTEBAN UBEDA SE TRATA DE DESBORDE DE CANAL POR COSTADO DE VC MACKENNA SE TRABAJA EN CONJUNTO CON PERSONAL DE SEG PUBLICA Y MUNICIPAL","cierre_min":53.0,"control_min":52.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 10:25","fecha":"2026-07-17","hh":10,"dia":"Friday","clave":"10-6-1","subtipo":"Gases/GLP en estructuras","categoria":"10-6 · Emanación de gases","color":"#E8C020","sector":"VILLA RAFAEL SOTOMAYOR","desc":"VILLA RAFAEL SOTOMAYOR","lat":-33.686263,"lon":-71.207626,"n_veh":1,"veh":"BX-4","carros":[{"v":"BX-4","r":14.0}],"resp_min":14.0,"narrativa":"A CARGO 401 SEBASTIAN MIRANDA SE TRATA DE INFLAMACION DE CALEFONT, SE TRABAJA","cierre_min":46.0,"control_min":45.0,"familia":"10-6","categoria_base":"Emanación de gases","descriptor":"Gases/GLP en estructuras"},{"hora":"2026-07-17 10:29","fecha":"2026-07-17","hh":10,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"POBLACION PUANGUE","desc":"POBLACION PUANGUE, PUANGUE","lat":-33.665589,"lon":-71.311802,"n_veh":1,"veh":"BF-1","carros":[{"v":"BF-1","r":9.1}],"resp_min":9.1,"narrativa":"AMPLI SE TRATA DE INUNDACION DE VIVIENDA SE TRABAJA EN ACEQUIA PARA DISMINUIR LA INUNDACION","cierre_min":44.0,"control_min":43.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 11:02","fecha":"2026-07-17","hh":11,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"RETEN CODIGUA (CARABINEROS DE CHILE)","desc":"RETEN CODIGUA (CARABINEROS DE CHILE)","lat":-33.757331,"lon":-71.324128,"n_veh":1,"veh":"B-7","carros":[{"v":"B-7","r":4.8}],"resp_min":4.8,"narrativa":"A CARGO 47 RODRIGO ACUÑA SE TRATA DE ENTRADA DE AGUA A DOMICILIO POR TECHUMBRE SE TRABAJA","cierre_min":42.0,"control_min":36.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 11:19","fecha":"2026-07-17","hh":11,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"POBLACION PUANGUE","desc":"POBLACION PUANGUE, PUANGUE","lat":-33.665589,"lon":-71.311802,"n_veh":1,"veh":"BF-1","carros":[{"v":"BF-1","r":5.5}],"resp_min":5.5,"narrativa":"AMPLI: SE TRATA DE ANEGACION DE VIVIENDA, SE EVALUA EL LUGAR SIN LA POSIBILIDAD DEL TRABAJO DE BOMBEROS , EMERGENCIA MUNICIPAL LLEGA AL LUGAR","cierre_min":1.0,"control_min":35.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 11:22","fecha":"2026-07-17","hh":11,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"LAGO PUYEHUE / LOS ESPINOS","desc":"LAGO PUYEHUE / LOS ESPINOS","lat":-33.686402,"lon":-71.227029,"n_veh":1,"veh":"BF-3","carros":[{"v":"BF-3","r":4.6}],"resp_min":4.6,"narrativa":"A CARGO 43 ESTEBAN UBEDA SE TRATA DE INUNDACION DE VIVIENDA APROXIMADAMENTE 3 CUADRAS","cierre_min":53.0,"control_min":null,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 11:44","fecha":"2026-07-17","hh":11,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"Los Bollenes 2 (LAS NALCAS 878)","desc":"Los Bollenes 2 (LAS NALCAS 878)","lat":-33.573264,"lon":-71.198588,"n_veh":1,"veh":"BF-5","carros":[{"v":"BF-5","r":6.5}],"resp_min":6.5,"narrativa":"A CARGO VOL ANIBAL MEZA SE TRATYO DE 2 VIVIENDAS INUNDADAS, CONTROLADO POR PROPIETARIOS DESTAPANDO COLECTOR DE AGUAS LLUVIAS","cierre_min":13.0,"control_min":null,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 11:56","fecha":"2026-07-17","hh":11,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"PARADERO 8","desc":"PARADERO 8, BOLLENAR (LAS PARCELAS 943)","lat":-33.571189,"lon":-71.19087,"n_veh":1,"veh":"BF-5","carros":[{"v":"BF-5","r":10.5}],"resp_min":10.5,"narrativa":"A CARGO VOL. 5° CIA ANIBAL MEZA SE TRATA DE ANEGAMIENTO DE VIVIENDA Y PATIO DE CASA HABITACION","cierre_min":137.0,"control_min":106.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 12:04","fecha":"2026-07-17","hh":12,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"POBLACION PUANGUE","desc":"POBLACION PUANGUE, PUANGUE","lat":-33.665589,"lon":-71.311802,"n_veh":1,"veh":"BF-1","carros":[],"resp_min":null,"narrativa":"(BF-1) En Cuartel: 1ra. Compañía.","cierre_min":3.0,"control_min":null,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 12:40","fecha":"2026-07-17","hh":12,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"EL ESFUERZO","desc":"EL ESFUERZO, CODIGUA","lat":-33.760777,"lon":-71.316604,"n_veh":1,"veh":"B-7","carros":[{"v":"B-7","r":7.5}],"resp_min":7.5,"narrativa":"A CARGO VOL.1° CIA SE TRATA DE ANEGAMINETO DE AVENIDA PRINCIPAL CON RIESGO DE 8 VIVIENDAS, SE TRABAJA EN CONJUNTO CON PERSONAL MUNICIPAL","cierre_min":93.0,"control_min":null,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 12:58","fecha":"2026-07-17","hh":12,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"VICUNA MACKENNA / ORTUZAR","desc":"VICUNA MACKENNA / ORTUZAR","lat":-33.68024,"lon":-71.21495,"n_veh":1,"veh":"BF-3","carros":[{"v":"BF-3","r":10.1}],"resp_min":10.1,"narrativa":"A CARGO 303 JAVIERA CURINAO SE TRATA DE INUNDACION DE PATIO EN CASA HABITACION SE TRABAJA","cierre_min":74.0,"control_min":51.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 13:10","fecha":"2026-07-17","hh":13,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"ELEUTERIO RAMIREZ / CAPITAN TRIZANO","desc":"ELEUTERIO RAMIREZ / CAPITAN TRIZANO","lat":-33.682907,"lon":-71.202239,"n_veh":1,"veh":"BF-1","carros":[{"v":"BF-1","r":13.0}],"resp_min":13.0,"narrativa":"A CARGO VOL. 1° CIA FRANCISCO TORNGUIST SE TRATA DE ANEGAMINETO DE AVENIDA PRINCIPAL CON RIESGO DE 8 VIVIENDAS, SE TRABAJA EN CONUNTO CON PERSONAL MUNICIPIPAL","cierre_min":105.0,"control_min":77.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 13:50","fecha":"2026-07-17","hh":13,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"RUTA G-380","desc":"RUTA G-380, KM 0 (POSTA BOLLENAR) (VILLA LAS CAMELIAS CASA 15)","lat":-33.568983,"lon":-71.211005,"n_veh":1,"veh":"BF-5","carros":[{"v":"BF-5","r":15.5}],"resp_min":15.5,"narrativa":"AMPLIACION DE PREINFORME: SE HABRIA BAJADO EL CAUDAL DE AGUA EVITANDO EL INGRESO A DOMICILIOS","cierre_min":128.0,"control_min":101.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 14:25","fecha":"2026-07-17","hh":14,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"SECTOR MANDINGA (POBLACION MANDINGA)","desc":"SECTOR MANDINGA (POBLACION MANDINGA)","lat":-33.797565,"lon":-71.299926,"n_veh":1,"veh":"BF-6","carros":[{"v":"BF-6","r":11.4}],"resp_min":11.4,"narrativa":"A CARGO 602 SCARLETT JIMENEZ SE TRATA DE INUNDACION DE CASA HABITACION CON DOS ADULTOS MAYORES EN SU INTERIOR SE TRABAJA OCN MOTOBOMBA","cierre_min":132.0,"control_min":114.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 14:28","fecha":"2026-07-17","hh":14,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"SAN MIGUEL / PARDO (SAN MIGUEL)","desc":"SAN MIGUEL / PARDO (SAN MIGUEL)","lat":-33.689337,"lon":-71.218231,"n_veh":1,"veh":"BX-7","carros":[],"resp_min":null,"narrativa":"APLI SE TRATA DE COLAPSO DE ALCANTARILLADO AL INTERIOR DE CASA HABITACION, SE TRABAJA EN DESTAPE, SE DA INDICACION AL PROPIETARIO DE LLAMAR AL 1452 PARA DESAPE DE ESTE","cierre_min":26.0,"control_min":6.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 14:31","fecha":"2026-07-17","hh":14,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"POBLACION PUANGUE","desc":"POBLACION PUANGUE, PUANGUE","lat":-33.665589,"lon":-71.311802,"n_veh":1,"veh":"BF-3","carros":[{"v":"BF-3","r":21.9}],"resp_min":21.9,"narrativa":"A CARGO 43 ESTEBAN UBEDA SE TRATA DE INUNDAICON DE DOS CASAS HABITACION, SE TRABAJA","cierre_min":134.0,"control_min":124.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 14:40","fecha":"2026-07-17","hh":14,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"PARADERO 6","desc":"PARADERO 6, BOLLENAR","lat":-33.570821,"lon":-71.201939,"n_veh":1,"veh":"B-5","carros":[{"v":"B-5","r":3.3}],"resp_min":3.3,"narrativa":"A CARGO VOL. 5° CIA JAZMIN AVENDAÑO SE TRATA DE CAIDA DE ARBOL SOBRE CASA HABITACION, SE TRABAJA","cierre_min":67.0,"control_min":60.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 14:53","fecha":"2026-07-17","hh":14,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"JUAN BAUTISTA PASTENE / JUAN WILLIAMS REBOLLEDO (POBLACION C","desc":"JUAN BAUTISTA PASTENE / JUAN WILLIAMS REBOLLEDO (POBLACION CAMPO LINDO)","lat":-33.676431,"lon":-71.213273,"n_veh":1,"veh":"BF-1","carros":[{"v":"BF-1","r":11.8}],"resp_min":11.8,"narrativa":"A CARGO VOL 1° CIA FRANCISCO TORNGUIST SE TRATA DE INUNDACION DE APROX 10 VIVIENDAS POR DESBORDE DE CANAL 1-3","cierre_min":106.0,"control_min":86.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 15:09","fecha":"2026-07-17","hh":15,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"VILLA SAN AGUSTIN","desc":"VILLA SAN AGUSTIN","lat":-33.687062,"lon":-71.207477,"n_veh":1,"veh":"BX-7","carros":[{"v":"BX-7","r":9.5}],"resp_min":9.5,"narrativa":"A CARGO VOL 2° CIA CHRISTIAN ALVAREZ SE TRATA TA DE PROBLEMAS DE ALCANTARILLADO SOLUCIONADO POR PROPIETARIOS, NO SE TRABAJA","cierre_min":24.0,"control_min":15.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 15:31","fecha":"2026-07-17","hh":15,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"PLANTA DE REVISION TECNICA","desc":"PLANTA DE REVISION TECNICA","lat":-33.668566,"lon":-71.245232,"n_veh":1,"veh":"BX-7","carros":[{"v":"BX-7","r":10.7}],"resp_min":10.7,"narrativa":"A CARGO VOL 2° CIA CHRISTIAN ALVAREZ SE TRATA DE INUNDACION EN PATIO DE CASA HABITACION CON INGRESO A COCINA PORTERIOR PIEZA, SE TRABAJA","cierre_min":74.0,"control_min":63.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 15:56","fecha":"2026-07-17","hh":15,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"CALLEJON SANTA FILOMENA","desc":"CALLEJON SANTA FILOMENA, BOLLENAR","lat":-33.58734,"lon":-71.231366,"n_veh":1,"veh":"BF-5","carros":[{"v":"BF-5","r":30.5}],"resp_min":30.5,"narrativa":"A CARGO 502 NICOLAS CACERES SE RECORRIO EL LUGAR NO ENCONTRANDO LOS SOLICITANTES","cierre_min":41.0,"control_min":null,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 16:14","fecha":"2026-07-17","hh":16,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"Pje. Río Limarí","desc":"Pje. Río Limarí, Melipilla, Región Metropolitana, Chile / PORTAL ORIENTE  II","lat":-33.676388,"lon":-71.184394,"n_veh":1,"veh":"BX-4","carros":[{"v":"BX-4","r":12.9}],"resp_min":12.9,"narrativa":"A CARGO 401 SEBASTIAN MIRANDA SE TRATA DE ACUMULACION DE AGUA LLUVIA EN PATIO DE CASA HABITACION CON AFECTACION A INTERIOR DE VIVIENDA, SE TRABAJA ( SE RECTIFICA INFORMACION )","cierre_min":56.0,"control_min":38.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 16:21","fecha":"2026-07-17","hh":16,"dia":"Friday","clave":"10-3-7","subtipo":"Rescate por posible PCR","categoria":"10-3 · Rescate de emergencia","color":"#2E7CE4","sector":"EL HUERTO / SAN MIGUEL","desc":"EL HUERTO / SAN MIGUEL","lat":-33.689233,"lon":-71.203061,"n_veh":1,"veh":"RX-1","carros":[{"v":"RX-1","r":6.0}],"resp_min":6.0,"narrativa":"A CARGO \n103 ALBERTO GALLEGUILLOS SE TRATA DE ADULTO MAYOR EN PCR HACE 15 MINUTOS","cierre_min":24.0,"control_min":null,"familia":"10-3","categoria_base":"Rescate de emergencia","descriptor":"Rescate por posible PCR"},{"hora":"2026-07-17 16:29","fecha":"2026-07-17","hh":16,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"PASAJE LAS PERDICES","desc":"PASAJE LAS PERDICES, SAN JOSE","lat":-33.609547,"lon":-71.222603,"n_veh":1,"veh":"BF-5","carros":[{"v":"BF-5","r":7.4}],"resp_min":7.4,"narrativa":"SE INFORMA QUE EN LA VIVIENDA INUNDADA SE ENCUENTRA UN ADULTO MAYOR  CON MOBILIDAD REDUCIDA SE NIEGA A HACER ABANDONO DEL DOMICILIO, SE INFORMA A EMERGENCIA MUNICIPAL","cierre_min":52.0,"control_min":null,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 16:49","fecha":"2026-07-17","hh":16,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"PARADERO 9","desc":"PARADERO 9, BOLLENAR","lat":-33.57158,"lon":-71.18646,"n_veh":1,"veh":"B-5","carros":[{"v":"B-5","r":8.7}],"resp_min":8.7,"narrativa":"A CARGO VOL 5° CIA SERGIO MEZA SE TRATA DE CAIDA DE ARBOL SOBRE DOMICILIO, SE TRABAJA","cierre_min":88.0,"control_min":75.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 17:01","fecha":"2026-07-17","hh":17,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"COLEGIO MENESIANO","desc":"COLEGIO MENESIANO","lat":-33.792481,"lon":-71.246386,"n_veh":1,"veh":"BF-6","carros":[{"v":"BF-6","r":19.9}],"resp_min":19.9,"narrativa":"A CARGO 603THOMAS NAVARRETE SE TRATA DE INUNDACION DE PATIO EN CASA HABITACION CON PELIGRO DE INGRESO A VIVIENDA, SE TRABAJA CON MOTOBOMBA","cierre_min":106.0,"control_min":83.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 17:13","fecha":"2026-07-17","hh":17,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"POBLACION PUANGUE","desc":"POBLACION PUANGUE, PUANGUE","lat":-33.665589,"lon":-71.311802,"n_veh":1,"veh":"BF-3","carros":[{"v":"BF-3","r":23.7}],"resp_min":23.7,"narrativa":"A CARGO 302 MAURICIO OLGUIN SE TRATA DE INUNDACION DE CASA HABITACION SE TRABAJA","cierre_min":64.0,"control_min":31.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 17:33","fecha":"2026-07-17","hh":17,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"CAMINO SANTA ROSA DE ESMERALDA","desc":"CAMINO SANTA ROSA DE ESMERALDA","lat":-33.644334,"lon":-71.276927,"n_veh":1,"veh":"BF-1","carros":[{"v":"BF-1","r":24.1}],"resp_min":24.1,"narrativa":"A CARGO VOL 1° CIA CAMILO ASTUDILLO SE TRATA DE ANEGAMIENTO DE PATIO, SE TRABAJA EN EVACUACION CON ACEQUIA Y MOTOBOMBA","cierre_min":85.0,"control_min":65.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 17:53","fecha":"2026-07-17","hh":17,"dia":"Friday","clave":"10-3-6","subtipo":"Rescate en ríos, canales, zanjas, alturas","categoria":"10-3 · Rescate de emergencia","color":"#2E7CE4","sector":"SECTOR RUMAY","desc":"SECTOR RUMAY","lat":-33.630179,"lon":-71.235682,"n_veh":1,"veh":"Q-2","carros":[{"v":"Q-2","r":11.5}],"resp_min":11.5,"narrativa":"","cierre_min":57.0,"control_min":47.0,"familia":"10-3","categoria_base":"Rescate de emergencia","descriptor":"Rescate en ríos, canales, zanjas, alturas"},{"hora":"2026-07-17 17:59","fecha":"2026-07-17","hh":17,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"PUENTE SANTA TERESA","desc":"PUENTE SANTA TERESA, MALLARAUCO (CALLEJON PATRIA VIEJA)","lat":-33.579759,"lon":-71.014212,"n_veh":1,"veh":"BF-5","carros":[{"v":"BF-5","r":28.3}],"resp_min":28.3,"narrativa":"A CARGO DE 502 NICOLAS CACERES SE TRATA DE DESBORDE DE CANAL NO AFECTANDO  ANEGAMIENTO DE  VIVIENDAS , NO SE TRABAJA","cierre_min":137.0,"control_min":136.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 18:26","fecha":"2026-07-17","hh":18,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"POBLACION OBISPO PABLO LIZAMA","desc":"POBLACION OBISPO PABLO LIZAMA","lat":-33.679188,"lon":-71.230982,"n_veh":1,"veh":"BF-3","carros":[{"v":"BF-3","r":9.7}],"resp_min":9.7,"narrativa":"A CARGO 303 JAVIERA CURINAO SE TRATA DE FILTRACION EN CASA HABITACION CON PERSONA POSTRADA EN SU INTERIOR","cierre_min":89.0,"control_min":53.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 18:34","fecha":"2026-07-17","hh":18,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"ANSELMO ALARCON / ARTURO PRAT (BOLLENAR)","desc":"ANSELMO ALARCON / ARTURO PRAT (BOLLENAR)","lat":-33.568939,"lon":-71.210141,"n_veh":1,"veh":"B-5","carros":[{"v":"B-5","r":16.9}],"resp_min":16.9,"narrativa":"A CARGO DE 502 NICOLAS CACERES SE TRATA DE DESBORDE DE CANAL NO AFECTANDO  ANEGAMIENTO DE  VIVIENDAS , NO SE TRABAJA","cierre_min":101.0,"control_min":82.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 18:48","fecha":"2026-07-17","hh":18,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"CALLEJON SANTA FILOMENA","desc":"CALLEJON SANTA FILOMENA, BOLLENAR","lat":-33.586804,"lon":-71.235007,"n_veh":1,"veh":"Q-2","carros":[{"v":"Q-2","r":16.5}],"resp_min":16.5,"narrativa":"A CARGO 203 RODRIGO VALDIVIA SE TRATA DE CAIDA DE ARBOL DE 15 METROS DE ALTURA SOBRE CASA","cierre_min":null,"control_min":null,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 18:59","fecha":"2026-07-17","hh":18,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"POBLACION EL PIMIENTO","desc":"POBLACION EL PIMIENTO, MALLARAUCO (POBLACION JUAN MUSRRI)","lat":-33.573849,"lon":-70.980909,"n_veh":1,"veh":"BF-5","carros":[{"v":"BF-5","r":10.9}],"resp_min":10.9,"narrativa":"A CARGO 502 NICOLAS CACERES SE TRATO DE ANEGAMIENTO DE VIVIENDA CONTROLADO POR MORADORES","cierre_min":36.0,"control_min":null,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 19:35","fecha":"2026-07-17","hh":19,"dia":"Friday","clave":"10-7","subtipo":"Llamado eléctrico","categoria":"10-7 · Emergencia eléctrica","color":"#A15CE0","sector":"LAS PRADERAS DE CODIGUA","desc":"LAS PRADERAS DE CODIGUA, CODIGUA","lat":-33.763968,"lon":-71.297047,"n_veh":1,"veh":"B-7","carros":[{"v":"B-7","r":10.3}],"resp_min":10.3,"narrativa":"JOEL PERALTA: SE TRATA DE DESPERFECTO DE ACOMETIDA DE CASA HABITACION","cierre_min":54.0,"control_min":47.0,"familia":"10-7","categoria_base":"Emergencia eléctrica","descriptor":"Llamado eléctrico"},{"hora":"2026-07-17 20:03","fecha":"2026-07-17","hh":20,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"POBLACION SANTA CLARA","desc":"POBLACION SANTA CLARA, MALLARAUCO (AL INTERIOR)","lat":-33.577168,"lon":-71.084147,"n_veh":1,"veh":"BF-5","carros":[{"v":"BF-5","r":14.3}],"resp_min":14.3,"narrativa":"A CARGO 502 NICOLAS CACERES SE TRATA DE CRECIDA DE CANAL CON POSIBLE DESBORDE A VIVIENDA, EN SU INTERIOR 4 PERSONAS , SE EVALUA EVACUACION DE LAS PERSONAS (2 ADULTOS Y 2 MENORES)","cierre_min":null,"control_min":31.0,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"},{"hora":"2026-07-17 20:29","fecha":"2026-07-17","hh":20,"dia":"Friday","clave":"10-8","subtipo":"Llamado no clasificado","categoria":"10-8 · Llamado no clasificado","color":"#7A8290","sector":"EL ESFUERZO","desc":"EL ESFUERZO, CODIGUA","lat":-33.760777,"lon":-71.316604,"n_veh":1,"veh":"B-7","carros":[{"v":"B-7","r":3.8}],"resp_min":3.8,"narrativa":"","cierre_min":null,"control_min":null,"familia":"10-8","categoria_base":"Llamado no clasificado","descriptor":"Llamado no clasificado"}],"meta":{"version":"initial-20260718","updated_at":"2026-07-18T00:00:00Z","available_from":"2026-07-16","available_to":"2026-07-17","selected_from":"2026-07-16","selected_to":"2026-07-17","total_available":61,"total_visible":61,"source_file":"datos iniciales incluidos","descriptor_mode":"familia_y_subtipo"}};
+const STATIC_DATA_URL = 'data/dashboard.json';
+const ADMIN_ENDPOINT_URL = 'data/admin_endpoint.json';
+const POLL_MS = 30000;
+function safeAdminApi(value){
+  try{const u=new URL(value);if(u.protocol!=='https:')return '';if(!u.hostname.endsWith('.trycloudflare.com'))return '';return u.origin;}
+  catch(e){return '';}
+}
+let ADMIN_API = safeAdminApi(new URLSearchParams(location.search).get('backend') || sessionStorage.getItem('cbmelAdminApi') || '');
+if(ADMIN_API)sessionStorage.setItem('cbmelAdminApi',ADMIN_API);
+let ADMIN_TOKEN = sessionStorage.getItem('cbmelAdminToken') || '';
+let CURRENT_VERSION = '';
+
+/* ================= DICCIONARIOS (editables) ================= */
+/* Claves radiales oficiales CBMEL (2022) — fuente única de verdad */
+const FAMILIA = {
+ '10-0':"Incendio estructural",'10-1':"Incendio de vehículo",'10-2':"Incendio pastizal / basura",
+ '10-3':"Rescate de emergencia",'10-4':"Rescate vehicular / accidente",'10-5':"Material peligroso (HAZMAT)",
+ '10-6':"Emanación de gases",'10-7':"Emergencia eléctrica",'10-8':"Llamado no clasificado",
+ '10-9':"Otros servicios",'10-10':"Escombros / Rebrote",'10-11':"Servicio aéreo",
+ '10-12':"Apoyo a otros Cuerpos",'10-13':"Atentado terrorista",'10-14':"Accidente aéreo",
+ '10-15':"Simulacro",'10-16':"Desastre natural"
+};
+const COLOR = {
+ 'Incendio estructural':"#E4322B",'Incendio de vehículo':"#FF6B35",'Incendio pastizal / basura':"#F5871F",
+ 'Rescate de emergencia':"#2E7CE4",'Rescate vehicular / accidente':"#38BDF8",'Material peligroso (HAZMAT)':"#C6D400",
+ 'Emanación de gases':"#E8C020",'Emergencia eléctrica':"#A15CE0",'Llamado no clasificado':"#7A8290",
+ 'Otros servicios':"#25B0A8",'Escombros / Rebrote':"#B45309",'Servicio aéreo':"#6FB7E0",
+ 'Apoyo a otros Cuerpos':"#E0559B",'Atentado terrorista':"#B01E1E",'Accidente aéreo':"#8B5CF6",
+ 'Simulacro':"#5B6472",'Desastre natural':"#0EA5A0",'Sin clasificar':"#4A5160"
+};
+const SUBTIPO = {
+ '10-0-1':"Estructura de menos de 2 pisos",'10-0-2':"Estructura sobre 3 pisos",
+ '10-0-3':"Estructura con alta afluencia de personas",'10-0-4':"Estructura de material ligero",
+ '10-0-5':"Estructura con materiales peligrosos",'10-1-1':"Fuego en vehículos livianos",
+ '10-1-2':"Fuego en vehículos pesados",'10-2-1':"Fuego en pastizales o árboles pequeña/mediana magnitud",
+ '10-2-2':"Forestal (interfase)",'10-2-3':"Forestal (no interfase)",
+ '10-2-4':"Forestal (PAP, PAS, prevención)",'10-2-5':"Fuego en vertederos/grandes contenedores",
+ '10-2-6':"Fuego en pequeños contenedores de basura",'10-2-7':"Fuego en objetos combustibles (barricadas)",
+ '10-3-1':"Caídas (nivel, altura, traumatismos)",'10-3-2':"Atropellos",
+ '10-3-3':"Atrapamiento de extremidad o empalamiento",'10-3-4':"Personas encerradas",
+ '10-3-5':"Personas atrapadas en estructuras colapsadas",'10-3-6':"Rescate en ríos, canales, zanjas, alturas",
+ '10-3-7':"Rescate por posible PCR",'10-3-8':"Rescate en espacios confinados",
+ '10-3-9':"Rescate en áreas agrestes",'10-3-10':"Rescate de animales atrapados",
+ '10-3-11':"Recuperación de fallecido",'10-4-1':"Colisión hasta 3 lesionados o 1 atrapado",
+ '10-4-2':"Colisión desde 4 lesionados o +2 atrapados",'10-4-3':"Colisión de vehículo pesado",
+ '10-4-4':"Colisión con materiales peligrosos",'10-4-5':"Desbarrancamiento de vehículo",
+ '10-4-6':"Colisión tren-vehículo SIN HAZMAT",'10-4-7':"Colisión tren-vehículo CON HAZMAT",
+ '10-5-1':"Derrame menor (<200 L o 25 kg)",'10-5-2':"Derrame mayor (>200 L o 25 kg)",
+ '10-5-3':"HAZMAT en estructuras",'10-5-4':"Cianuro/mercurio/biológicos/radioactivos",
+ '10-5-5':"Descarrilamiento con fuga",'10-6-1':"Gases/GLP en estructuras",
+ '10-6-2':"Gases/GLP en vía pública",'10-6-3':"Explosión de cilindros de gas",
+ '10-7':"Llamado eléctrico",'10-8':"Llamado no clasificado",
+ '10-9':"Llamado a otros servicios",'10-10-1':"Escombros/rebrote estructural",
+ '10-10-2':"Escombros/rebrote forestal",'10-11-1':"Abastecimiento de aeronaves",
+ '10-11-2':"Guardia preventiva en aeródromo",'10-12':"Apoyo a otros Cuerpos de Bomberos",
+ '10-13':"Atentado terrorista",'10-14':"Accidente aéreo",
+ '10-15':"Simulacro",'10-16':"Desastre natural"
+};
+const TARGET = 8.0;
+function familiaClave(clave){
+  if(!clave) return '';
+  return clave.split('-').slice(0,2).join('-');
+}
+function categoriaBase(clave){
+  if(!clave) return 'Sin clasificar';
+  const fam=familiaClave(clave);
+  return FAMILIA[fam] || ('Otra ('+clave+')');
+}
+function categoria(clave){
+  const fam=familiaClave(clave),base=categoriaBase(clave);
+  return fam ? `${fam} · ${base}` : base;
+}
+function subtipoDe(clave){
+  if(!clave) return '';
+  return SUBTIPO[clave] || SUBTIPO[clave.split('-').slice(0,2).join('-')] || '';
+}
+
+/* ================= PARSEO DE CSV (robusto) ================= */
+const FIELD_RE = /^([\s\S]*?),("[^"]*"|[^,]*),([^,]*),("[^"]*"|[^,]*),([^,]*),([^,]*)$/;
+function stripQ(s){ return (s||'').replace(/^"|"$/g,'').trim(); }
+
+function parseBitacora(text){
+  const parsed = Papa.parse(text.replace(/^\uFEFF/,''), {skipEmptyLines:false});
+  let data = parsed.data || [];
+  if(!data.length) return [];
+  let head = data.shift().map(x=>String(x??'').trim());
+  const ix = (name)=>head.findIndex(h=>h.toLowerCase()===name.toLowerCase());
+  let iC=ix('Contenido'), iD=ix('Despacho'), iV=ix('Vehículo'), iH=ix('Hora'), iK=ix('Código'), iU=ix('Usuario');
+  const FIELD_RE=/^(.*?),("[^"]*"|[^,]*),([^,]*),("[^"]*"|[^,]*),([^,]*),([^,]*)$/s;
+  const stripQ=s=>String(s??'').replace(/^"|"$/g,'');
+  const rows=[];
+  for(let rec of data){
+    if(rec.length===1){
+      const m=FIELD_RE.exec(String(rec[0]??''));
+      rec=m?[m[1],stripQ(m[2]),m[3],stripQ(m[4]),m[5],m[6]]:[rec[0],'','','','',''];
+      iC=0;iD=1;iV=2;iH=3;iK=4;iU=5;
+    }
+    rows.push({
+      Contenido:String(rec[iC>=0?iC:0]??'').trim(),
+      Despacho:String(rec[iD>=0?iD:1]??'').trim(),
+      Vehiculo:String(rec[iV>=0?iV:2]??'').trim(),
+      Hora:stripQ(String(rec[iH>=0?iH:3]??'').trim()),
+      Codigo:String(rec[iK>=0?iK:4]??'').trim(),
+      Usuario:String(rec[iU>=0?iU:5]??'').trim()
+    });
+  }
+  return rows;
+}
+
+function parseHora(s){
+  if(!s) return null;
+  const d=new Date(String(s).replace(' ','T'));
+  return isNaN(d.getTime())?null:d;
+}
+function respSecs(s){
+  const m=/Tiempo en llegar\s*(?:(\d+)\s*min)?\s*(?:(\d+)\s*seg)?/i.exec(s||'');
+  if(!m) return null;
+  const v=(m[1]?+m[1]:0)*60+(m[2]?+m[2]:0);
+  return v||null;
+}
+function uniqueClean(a){return [...new Set((a||[]).map(x=>String(x||'').trim()).filter(Boolean))];}
+function meaningfulNarrative(seg){
+  const system=[/Se crea despacho/i,/Coordenadas:/i,/Detalle Despacho:/i,/Se despacha Vehículo/i,
+    /Se cambia estado/i,/Se cierra el despacho/i,/El usuario .* reporte/i,/Ordenamiento sugerido/i,
+    /Estado de disponibilidad/i,/Se agrega vehículo/i,/Se actualiza/i,/Se elimina/i,/Se cambia posición/i,/Nueva dirección/i,/Se cambia dirección/i];
+  const cand=[];seg.forEach(r=>{let s=(r.Contenido||'').trim();const mi=/Se asigna estado[^|]*\|\s*(.+)/i.exec(s);if(mi)s=mi[1].trim();if(s.length>=10&&!system.some(p=>p.test(s)))cand.push(s);});
+  cand.sort((a,b)=>b.length-a.length);
+  return (cand[0]||'').slice(0,320);
+}
+
+/* ================= EXTRACCIÓN DE INCIDENTES =================
+   Se usa la columna Despacho como llave y se separan ocurrencias repetidas por la hora de creación.
+   Esto evita asociar un estado 6-3 o un carro a una emergencia distinta. */
+function extractIncidents(rows){
+  const valid=rows.map((r,i)=>({...r,_i:i,_dt:parseHora(r.Hora)})).filter(r=>r.Despacho&&r._dt);
+  const groups={}; valid.forEach(r=>(groups[r.Despacho]=groups[r.Despacho]||[]).push(r));
+  const incs=[];
+  Object.entries(groups).forEach(([dispatch,g])=>{
+    g.sort((a,b)=>a._dt-b._dt||a._i-b._i);
+    const creates=g.filter(r=>(r.Contenido||'').includes('Se crea despacho'));
+    creates.forEach((cr,j)=>{
+      const t0=cr._dt, t1=(creates[j+1]?creates[j+1]._dt:null);
+      const seg=g.filter(r=>r._dt>=t0&&(!t1||r._dt<t1));
+      let lat=null,lon=null,clave=null,desc='';
+      for(const r of seg){
+        const mc=/Latitud\s*(-?\d+(?:\.\d+)?),\s*Longitud\s*(-?\d+(?:\.\d+)?)/.exec(r.Contenido||'');
+        if(mc&&lat==null){lat=+mc[1];lon=+mc[2];}
+        const md=/Clave\s*=\s*(.*?)\s*\|\s*(.*)/s.exec(r.Contenido||'');
+        if(md&&!clave){
+          const mn=/(\d+(?:-\d+)*)\s*(.*)/.exec(md[1].trim());
+          if(mn){clave=mn[1];const ex=mn[2].trim();desc=md[2].trim();if(ex)desc='['+ex+'] '+desc;}
+          else{clave=md[1].trim();desc=md[2].trim();}
+        }
+      }
+      if(!clave){const m=/^(\d+(?:-\d+)*)\s+(.*)$/.exec(dispatch);if(m){clave=m[1];desc=desc||m[2];}}
+      const mv=/Vehículos despachados\s*=\s*\[([^\]]*)\]/.exec(cr.Contenido||'');
+      let vehiculos=mv&&mv[1].trim()?mv[1].split(',').map(v=>v.trim()):[];
+      seg.forEach(r=>{if((r.Contenido||'').includes('Se despacha Vehículo')&&r.Vehiculo)vehiculos.push(r.Vehiculo);});
+      vehiculos=uniqueClean(vehiculos);
+      const arrivals={};
+      seg.forEach(r=>{
+        const s=r.Contenido||'';
+        if(r.Codigo==='6-3'||/6-3\(/.test(s)){
+          const mm=/6-3\(([^)]+)\)/.exec(s); const v=(mm?mm[1]:r.Vehiculo||'').trim();
+          let sec=respSecs(s);
+          if((sec==null||sec<=0)&&r._dt)sec=(r._dt-t0)/1000;
+          if(v&&sec!=null&&sec>=0&&sec<86400)arrivals[v]=Math.min(arrivals[v]??Infinity,sec);
+        }
+      });
+      const carros=Object.entries(arrivals).map(([v,s])=>({v,r:Math.round(s/6)/10})).sort((a,b)=>a.r-b.r);
+      const closeRows=seg.filter(r=>(r.Contenido||'').includes('Se cierra el despacho'));
+      const ctrlRows=seg.filter(r=>r.Codigo==='6-7');
+      const closeTime=closeRows.length?closeRows.map(r=>r._dt).sort((a,b)=>a-b)[0]:null;
+      const controlTime=ctrlRows.length?ctrlRows.map(r=>r._dt).sort((a,b)=>a-b)[0]:null;
+      if(lat==null||lon==null)return;
+      incs.push({dispatch,lat,lon,clave,desc,vehiculos,hora:t0,n_veh:vehiculos.length,
+        resp_s:carros.length?carros[0].r*60:null,carros,narrativa:meaningfulNarrative(seg),
+        cierre_min:closeTime?Math.max(0,(closeTime-t0)/60000):null,
+        control_min:controlTime?Math.max(0,(controlTime-t0)/60000):null});
+    });
+  });
+  incs.sort((a,b)=>a.hora-b.hora);
+  return incs;
+}
+
+/* ================= HELPERS ESTADÍSTICOS ================= */
+function median(a){return quantile(a,0.5);}
+function quantile(arr,q){
+  if(!arr.length)return NaN;const a=[...arr].sort((x,y)=>x-y),pos=(a.length-1)*q,base=Math.floor(pos),rest=pos-base;
+  return a[base+1]!==undefined?a[base]+rest*(a[base+1]-a[base]):a[base];
+}
+function mean(a){return a.length?a.reduce((s,x)=>s+x,0)/a.length:0;}
+function stdev(a){if(a.length<2)return 0;const m=mean(a);return Math.sqrt(a.reduce((s,x)=>s+(x-m)**2,0)/(a.length-1));}
+function pad(n){return String(n).padStart(2,'0');}
+function fmtDT(d){return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;}
+function fmtDM(d){return `${pad(d.getDate())}-${pad(d.getMonth()+1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;}
+function fmtDMY(d){return `${pad(d.getDate())}-${pad(d.getMonth()+1)}-${d.getFullYear()}`;}
+function fechaStr(d){return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;}
+function round1(v){return Number.isFinite(v)?+v.toFixed(1):0;}
+function pct(n,d){return d?round1(n/d*100):0;}
+function parseIncidentDate(s){return parseHora(s);}
+const DIAS=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+
+function findingPriority(level){return ({high:0,medium:1,low:2,positive:3})[level]??9;}
+function buildFindings(A){
+  const f=[],add=(level,title,evidence,action,dimension)=>f.push({level,title,evidence,action,dimension});
+  if(A.unclassified_pct>=30)add('high','Alta proporción de llamados no clasificados',`${A.unclassified_pct}% (${A.unclassified_n} de ${A.total}) utiliza clave 10-8.`,`Revisar codificación posterior al cierre, exigir motivo/subtipo y auditar semanalmente la recategorización.`,`Calidad de clasificación`);
+  else if(A.unclassified_pct>=15)add('medium','Clasificación no específica relevante',`${A.unclassified_pct}% de los eventos permanece en 10-8.`,`Definir catálogo de motivos y responsable de reclasificación.`,`Calidad de clasificación`);
+  if(A.resp_coverage_pct<85)add('high','Baja trazabilidad del arribo 6-3',`Solo ${A.resp_coverage_pct}% de las emergencias tiene primer arribo calculable; faltan ${A.missing_response}.`,`Estandarizar marcación 6-3 y revisar por carro/operador los registros faltantes.`,`Calidad de datos`);
+  else if(A.resp_coverage_pct<95)add('medium','Brecha de completitud en estados 6-3',`${A.missing_response} emergencias (${round1(100-A.resp_coverage_pct)}%) no tienen tiempo de arribo.`,`Incorporar control diario de bitácora y alerta por despacho cerrado sin 6-3.`,`Calidad de datos`);
+  if(A.pct_target<70)add('high','Cumplimiento bajo del objetivo de respuesta',`El ${A.pct_target}% llega en ≤ ${A.target} min; ${A.late_n} arribos superan el objetivo.`,`Aplicar análisis de causa raíz a los atrasos por franja, sector y carro; priorizar causas controlables.`,`Desempeño operacional`);
+  else if(A.pct_target<85)add('medium','Cumplimiento operacional mejorable',`El ${A.pct_target}% cumple el objetivo de ${A.target} min.`,`Focalizar mejoras en el P90 y en unidades con menor cumplimiento.`,`Desempeño operacional`);
+  else add('positive','Buen cumplimiento del objetivo',`${A.pct_target}% de los arribos se registra en ≤ ${A.target} min.`,`Sostener el estándar y controlar variación extrema mediante P90 e I-MR.`,`Desempeño operacional`);
+  if(A.resp_p90>A.target*2)add('high','Cola de respuesta prolongada',`P90 = ${A.resp_p90} min, superior a dos veces el objetivo.`,`Revisar los ${A.extreme_late_n} casos > ${round1(A.target*2)} min y segmentar por distancia, disponibilidad y simultaneidad.`,`Variabilidad`);
+  else if(A.resp_p90>A.target*1.5)add('medium','Variabilidad alta en el extremo superior',`P90 = ${A.resp_p90} min versus objetivo ${A.target} min.`,`Gestionar la dispersión, no solo el promedio; revisar los casos del decil superior.`,`Variabilidad`);
+  if(A.special_causes>0)add('high','Señales de causas especiales en el proceso',`${A.special_causes} observación(es) activa(n) reglas de control I-MR.`,`Realizar revisión puntual de cada evento marcado antes de modificar el proceso común.`,`Control estadístico`);
+  if(A.top_vehicle&&A.top_vehicle.share>=35)add('medium','Concentración de carga en una unidad',`${A.top_vehicle.veh} participa en ${A.top_vehicle.share}% de los despachos del período.`,`Verificar continuidad operativa, mantenimiento preventivo y capacidad de reemplazo.`,`Material mayor`);
+  if(A.max_60min>=4)add('medium','Ventanas de alta simultaneidad',`Se observaron hasta ${A.max_60min} emergencias dentro de una ventana móvil de 60 minutos.`,`Definir cobertura mínima, escalamiento y redistribución para períodos de demanda concurrente.`,`Capacidad`);
+  const night=A.by_shift.find(x=>x.shift==='Nocturna'),day=A.by_shift.find(x=>x.shift==='Diurna');
+  if(night&&day&&night.response_n>=5&&day.response_n>=5&&night.compliance+12<day.compliance)add('medium','Brecha nocturna de desempeño',`Cumplimiento nocturno ${night.compliance}% versus diurno ${day.compliance}%.`,`Revisar disponibilidad de conductores, dotación y tiempos de salida en franja 20:00-07:59.`,`Turnos`);
+  if(A.top_sector&&A.top_sector.share>=18)add('low','Concentración territorial identificable',`${A.top_sector.sector} concentra ${A.top_sector.share}% de los eventos.`,`Evaluar prevención focalizada y preposicionamiento según tipo de emergencia y horario.`,`Territorio`);
+  if(A.total<20)add('low','Base muestral reducida',`El período contiene ${A.total} emergencias.`,`Evitar conclusiones estructurales; comparar con períodos equivalentes y ampliar la serie.`,`Validez estadística`);
+  return f.sort((a,b)=>findingPriority(a.level)-findingPriority(b.level)).slice(0,8);
+}
+
+function deriveAgg(incidents,target){
+  const rows=(incidents||[]).map(d=>({...d,_dt:parseIncidentDate(d.hora)})).filter(d=>d._dt).sort((a,b)=>a._dt-b._dt);
+  const rtRows=rows.filter(d=>d.resp_min!=null&&Number.isFinite(+d.resp_min));
+  const rt=rtRows.map(d=>+d.resp_min),mu=mean(rt),sd=stdev(rt),med=median(rt),p90=quantile(rt,.9),p75=quantile(rt,.75),p25=quantile(rt,.25);
+  const mr=rt.slice(1).map((v,i)=>Math.abs(v-rt[i])),mrbar=mean(mr),ucl=mu+2.66*mrbar,lcl=Math.max(0,mu-2.66*mrbar),mrucl=3.268*mrbar;
+  const ctrl=rtRows.map((d,i)=>({t:fmtDM(d._dt),v:+d.resp_min,mr:i?Math.abs(+d.resp_min-rt[i-1]):null,flags:[]}));
+  ctrl.forEach((d,i)=>{if(d.v>ucl||d.v<lcl)d.flags.push('Fuera de límites I-MR');if(i&&d.mr>mrucl)d.flags.push('Rango móvil fuera de control');});
+  for(let i=7;i<ctrl.length;i++){const s=ctrl.slice(i-7,i+1);if(s.every(d=>d.v>mu)||s.every(d=>d.v<mu))s.forEach(d=>{if(!d.flags.includes('Racha de 8 puntos'))d.flags.push('Racha de 8 puntos');});}
+  for(let i=5;i<ctrl.length;i++){const s=ctrl.slice(i-5,i+1).map(d=>d.v);const up=s.every((v,k)=>!k||v>s[k-1]),dn=s.every((v,k)=>!k||v<s[k-1]);if(up||dn)ctrl.slice(i-5,i+1).forEach(d=>{if(!d.flags.includes('Tendencia de 6 puntos'))d.flags.push('Tendencia de 6 puntos');});}
+  const special=ctrl.filter(d=>d.flags.length).length;
+  const cc={},catResp={},catColor={},dd={},bh=Array(24).fill(0),wd=Array(7).fill(0),sectorC={},shiftC={Diurna:[],Nocturna:[]};
+  let vehTotal=0,geo=0;
+  rows.forEach(r=>{
+    const cat=r.categoria||categoria(r.clave);cc[cat]=(cc[cat]||0)+1;catColor[cat]=r.color||catColor[cat]||'#4A5160';(catResp[cat]=catResp[cat]||[]);if(r.resp_min!=null)catResp[cat].push(+r.resp_min);
+    const fs=r.fecha||fechaStr(r._dt);dd[fs]=(dd[fs]||0)+1;bh[r._dt.getHours()]++;wd[r._dt.getDay()]++;
+    const sec=(r.sector||r.desc||'Sin sector').trim()||'Sin sector';sectorC[sec]=(sectorC[sec]||0)+1;
+    const sh=(r._dt.getHours()>=8&&r._dt.getHours()<20)?'Diurna':'Nocturna';shiftC[sh].push(r.resp_min==null?null:+r.resp_min);
+    vehTotal+=Number(r.n_veh||0);if(Number.isFinite(+r.lat)&&Number.isFinite(+r.lon))geo++;
+  });
+  const by_cat=Object.entries(cc).sort((a,b)=>b[1]-a[1]);let cum=0;
+  const catTotal=rows.length||1;
+  const catOut=by_cat.map(([k,v])=>{cum+=v;const a=catResp[k]||[];return {k,v,c:catColor[k]||'#4A5160',share:pct(v,catTotal),cum_pct:pct(cum,catTotal),response_n:a.length,resp_med:a.length?round1(median(a)):0,resp_p90:a.length?round1(quantile(a,.9)):0,compliance:a.length?pct(a.filter(x=>x<=target).length,a.length):0};});
+  const by_day=Object.keys(dd).sort().map(d=>({d,v:dd[d]}));
+  const by_weekday=DIAS.map((d,i)=>({d,v:wd[i]}));
+  const by_sector=Object.entries(sectorC).sort((a,b)=>b[1]-a[1]).map(([sector,n])=>({sector,n,share:pct(n,rows.length)}));
+  const vm={};
+  rows.forEach(r=>{
+    const dispatched=uniqueClean(String(r.veh||'').split(',').concat((r.carros||[]).map(c=>c.v)));
+    const arrMap={};(r.carros||[]).forEach(c=>arrMap[c.v]=+c.r);
+    dispatched.forEach(v=>{
+      const m=vm[v]||(vm[v]={veh:v,dispatches:0,arrivals:0,times:[],cats:{}});m.dispatches++;m.cats[r.categoria]=(m.cats[r.categoria]||0)+1;
+      if(arrMap[v]!=null){m.arrivals++;m.times.push(arrMap[v]);}
+    });
+  });
+  const by_vehicle=Object.values(vm).map(m=>{const a=m.times,topCat=Object.entries(m.cats).sort((x,y)=>y[1]-x[1])[0];return {
+    veh:m.veh,n:m.dispatches,dispatches:m.dispatches,arrivals:m.arrivals,missing:m.dispatches-m.arrivals,coverage:pct(m.arrivals,m.dispatches),share:pct(m.dispatches,Math.max(1,rows.length)),
+    resp_med:a.length?round1(median(a)):0,resp_mean:a.length?round1(mean(a)):0,resp_p90:a.length?round1(quantile(a,.9)):0,resp_min:a.length?round1(Math.min(...a)):0,resp_max:a.length?round1(Math.max(...a)):0,
+    compliance:a.length?pct(a.filter(x=>x<=target).length,a.length):0,top_category:topCat?topCat[0]:'—'};}).sort((a,b)=>b.dispatches-a.dispatches||a.resp_med-b.resp_med);
+  const by_shift=Object.entries(shiftC).map(([shift,a0])=>{const a=a0.filter(v=>v!=null);return {shift,n:a0.length,response_n:a.length,resp_med:a.length?round1(median(a)):0,resp_p90:a.length?round1(quantile(a,.9)):0,compliance:a.length?pct(a.filter(x=>x<=target).length,a.length):0};});
+  const dates=rows.map(r=>r._dt),days=Math.max(1,Math.round((dates.at(-1)-dates[0])/86400000)+1);
+  let max60=0,j=0;for(let i=0;i<dates.length;i++){while(dates[i]-dates[j]>3600000)j++;max60=Math.max(max60,i-j+1);}
+  const duration=rows.filter(r=>r.cierre_min!=null&&Number.isFinite(+r.cierre_min)).map(r=>+r.cierre_min),control=rows.filter(r=>r.control_min!=null&&Number.isFinite(+r.control_min)).map(r=>+r.control_min);
+  const unclassifiedN=rows.filter(r=>String(r.clave||'').startsWith('10-8')).length,late=rt.filter(v=>v>target),extreme=rt.filter(v=>v>target*2);
+  const topHour=bh.indexOf(Math.max(...bh)),topDay=by_day.slice().sort((a,b)=>b.v-a.v)[0]||null,topVeh=by_vehicle[0]||null,topSector=by_sector[0]||null;
+  const agg={total:rows.length,con_coord:geo,veh_total:vehTotal,unique_vehicles:by_vehicle.length,dias:days,daily_avg:round1(rows.length/days),max_60min:max60,
+    resp_n:rt.length,missing_response:rows.length-rt.length,resp_coverage_pct:pct(rt.length,rows.length),resp_min:rt.length?round1(Math.min(...rt)):0,resp_med:rt.length?round1(med):0,resp_mean:round1(mu),resp_p25:rt.length?round1(p25):0,resp_p75:rt.length?round1(p75):0,resp_iqr:rt.length?round1(p75-p25):0,resp_p90:rt.length?round1(p90):0,resp_max:rt.length?round1(Math.max(...rt)):0,resp_sd:round1(sd),resp_cv:mu?round1(sd/mu*100):0,
+    pct_target:pct(rt.filter(v=>v<=target).length,rt.length),late_n:late.length,extreme_late_n:extreme.length,target,defect_rate:pct(late.length,rt.length),dpmo:rt.length?Math.round(late.length/rt.length*1e6):0,cpu:sd?round1((target-mu)/(3*sd)):0,zbench:sd?round1((target-mu)/sd):0,
+    fecha_ini:dates.length?fmtDMY(dates[0]):'—',fecha_fin:dates.length?fmtDMY(dates.at(-1)):'—',center:rows.length?[+median(rows.map(r=>+r.lat)).toFixed(5),+median(rows.map(r=>+r.lon)).toFixed(5)]:[-33.68,-71.22],
+    by_cat:catOut,by_day,by_hour:bh,by_weekday,by_sector,by_vehicle,by_shift,ctrl,ctrl_mu:round1(mu),ctrl_ucl:round1(ucl),ctrl_lcl:round1(lcl),mr_bar:round1(mrbar),mr_ucl:round1(mrucl),special_causes:special,
+    duration_n:duration.length,duration_med:duration.length?round1(median(duration)):0,duration_p90:duration.length?round1(quantile(duration,.9)):0,control_n:control.length,control_med:control.length?round1(median(control)):0,
+    unclassified_n:unclassifiedN,unclassified_pct:pct(unclassifiedN,rows.length),top_hour:topHour,top_hour_count:Math.max(...bh,0),top_day:topDay,top_vehicle:topVeh,top_sector:topSector};
+  agg.findings=buildFindings(agg);return agg;
+}
+
+/* ================= CONSTRUIR PAYLOAD ================= */
+function buildPayload(incs,desde,hasta){
+  let f=incs.filter(x=>x.hora);if(desde)f=f.filter(x=>fechaStr(x.hora)>=desde);if(hasta)f=f.filter(x=>fechaStr(x.hora)<=hasta);
+  const recs=f.map(r=>{const cat=categoria(r.clave),base=categoriaBase(r.clave),fam=familiaClave(r.clave),sub=subtipoDe(r.clave);return {hora:fmtDT(r.hora),fecha:fechaStr(r.hora),hh:r.hora.getHours(),dia:DIAS[r.hora.getDay()],clave:r.clave,familia:fam,categoria_base:base,categoria:cat,subtipo:sub,descriptor:sub||base,color:COLOR[base]||'#4A5160',sector:(r.desc||'').split(',')[0].trim().slice(0,60),desc:(r.desc||'').slice(0,180),lat:+r.lat.toFixed(6),lon:+r.lon.toFixed(6),n_veh:r.n_veh,veh:(r.vehiculos||[]).join(', '),carros:r.carros||[],resp_min:r.resp_s==null?null:round1(r.resp_s/60),narrativa:r.narrativa||'',cierre_min:r.cierre_min==null?null:round1(r.cierre_min),control_min:r.control_min==null?null:round1(r.control_min)};});
+  return {agg:{target:TARGET},incidents:recs};
+}
+
+/* ================= ESTADO DE RENDER ================= */
+let A, INC, cats, colorOf={}, active, mode='markers';
+let map=null, markerLayer=null, heatLayer=null;
+const charts={};
+
+Chart.defaults.color='#8A94A3';Chart.defaults.font.family='Inter';Chart.defaults.font.size=11;
+const gridc='#232a34';
+
+function fmtPopup(d){
+  const rt = d.resp_min==null?'—':d.resp_min.toFixed(1)+' min';
+  const carros = (d.carros&&d.carros.length)? d.carros.map(c=>`${c.v} (${c.r.toFixed(1)}m)`).join(', ') : (d.veh||'—');
+  return `<div class="pop"><b style="color:${d.color}">${d.categoria}</b><br>
+    <span class="k">Descriptor específico</span> ${d.clave}${d.subtipo?' · '+d.subtipo:''} · <span class="k">${d.hora}</span><br>
+    <span class="k">Lugar:</span> ${d.desc||d.sector}<br>
+    <span class="k">Carros:</span> ${carros}<br>
+    <span class="k">1er arribo:</span> ${rt}
+    ${d.narrativa?`<br><span class="k">Detalle:</span> ${d.narrativa}`:''}</div>`;
+}
+function drawMap(){
+  const shown = INC.filter(d=>active.has(d.categoria));
+  document.getElementById('maptag').textContent = shown.length+' de '+INC.length;
+  if(markerLayer && map.hasLayer(markerLayer)) map.removeLayer(markerLayer);
+  if(heatLayer && map.hasLayer(heatLayer)) map.removeLayer(heatLayer);
+  if(mode==='markers'){
+    markerLayer = L.markerClusterGroup({maxClusterRadius:34,spiderfyOnMaxZoom:true,
+      iconCreateFunction:c=>L.divIcon({html:`<div style="background:#e4322b;color:#fff;border-radius:50%;width:34px;height:34px;display:grid;place-items:center;font-family:'JetBrains Mono';font-weight:700;border:2px solid #ff6a5c">${c.getChildCount()}</div>`,className:'',iconSize:[34,34]})});
+    shown.forEach(d=>{
+      const m=L.circleMarker([d.lat,d.lon],{radius:7,color:'#0c0f14',weight:1.5,fillColor:d.color,fillOpacity:.92});
+      m.bindPopup(fmtPopup(d)); markerLayer.addLayer(m);
+    });
+    map.addLayer(markerLayer);
+  }else{
+    heatLayer=L.heatLayer(shown.map(d=>[d.lat,d.lon,0.8]),{radius:28,blur:20,maxZoom:14,
+      gradient:{0.2:'#2E7CE4',0.4:'#C6D400',0.65:'#F5871F',1:'#E4322B'}});
+    map.addLayer(heatLayer);
+  }
+}
+
+function renderAll(payload){
+  INC = payload.incidents || []; A = deriveAgg(INC, (payload.agg&&payload.agg.target)||TARGET);
+  document.getElementById('rango').textContent = A.fecha_ini + '  →  ' + A.fecha_fin;
+  const meta=payload.meta||{};
+  if(meta.version)CURRENT_VERSION=String(meta.version);
+  const stamp=meta.updated_at?new Date(meta.updated_at).toLocaleString('es-CL'):'sin marca de actualización';
+  document.getElementById('syncState').textContent=`Sincronizado · ${stamp}`;
+  if(meta.available_from){$('desde').min=meta.available_from;$('hasta').min=meta.available_from;}
+  if(meta.available_to){$('desde').max=meta.available_to;$('hasta').max=meta.available_to;}
+  if(meta.selected_from)$('desde').value=meta.selected_from;
+  if(meta.selected_to)$('hasta').value=meta.selected_to;
+
+  /* KPIs */
+  const kpis=[
+   {lab:'Emergencias',val:A.total,sub:A.daily_avg+' por día',c:''},
+   {lab:'Despachos de carros',val:A.veh_total,sub:(A.total?(A.veh_total/A.total).toFixed(1):'0')+' por emergencia',c:'k2'},
+   {lab:'Respuesta mediana',val:A.resp_med,sub:'min · cobertura '+A.resp_coverage_pct+'%',c:'k3'},
+   {lab:'Respuesta P90',val:A.resp_p90,sub:'min · foco en cola',c:'k4'},
+   {lab:'Cumple ≤ '+A.target+' min',val:A.pct_target+'%',sub:A.late_n+' arribos tardíos',c:'k5'},
+   {lab:'Duración mediana',val:A.duration_med||'—',sub:A.duration_n?'min hasta cierre':'sin cobertura',c:'k6'},
+  ];
+  document.getElementById('kpis').innerHTML = kpis.map(k=>
+   `<div class="kpi ${k.c}"><div class="lab">${k.lab}</div><div class="val">${k.val}</div><div class="sub">${k.sub}</div></div>`).join('');
+
+  const mm=[
+    {l:'Cobertura 6-3',v:A.resp_coverage_pct+'%',s:A.missing_response+' sin arribo'},
+    {l:'No clasificados',v:A.unclassified_pct+'%',s:A.unclassified_n+' clave 10-8'},
+    {l:'Demanda máxima',v:A.max_60min,s:'eventos en 60 min'},
+    {l:'Hora punta',v:String(A.top_hour).padStart(2,'0')+':00',s:A.top_hour_count+' eventos'},
+    {l:'Causas especiales',v:A.special_causes,s:'señales I-MR'},
+    {l:'Capacidad Cpu',v:A.cpu,s:'objetivo '+A.target+' min'},
+  ];
+  document.getElementById('mgmtMetrics').innerHTML=mm.map(m=>`<div class="mmetric"><div class="ml">${m.l}</div><div class="mv">${m.v}</div><div class="ms">${m.s}</div></div>`).join('');
+  document.getElementById('findtag').textContent=A.findings.length+' señales priorizadas';
+  document.getElementById('findingGrid').innerHTML=A.findings.slice(0,6).map(f=>`<div class="finding ${f.level}"><div class="fh"><span class="sev">${f.level==='high'?'Alta':f.level==='medium'?'Media':f.level==='positive'?'Fortaleza':'Vigilar'}</span><span class="ft">${f.title}</span></div><div class="fe"><b>Evidencia:</b> ${f.evidence}</div><div class="fa"><b>Decisión sugerida:</b> ${f.action}</div></div>`).join('');
+
+  /* map + legend state */
+  cats=[...new Set(INC.map(d=>d.categoria))];
+  colorOf={}; INC.forEach(d=>colorOf[d.categoria]=d.color);
+  active=new Set(cats);
+  document.getElementById('legend').innerHTML = cats.map(c=>
+   `<span class="chip" data-cat="${c}"><i style="background:${colorOf[c]}"></i>${c}</span>`).join('');
+  document.querySelectorAll('.chip[data-cat]').forEach(el=>{
+    el.onclick=()=>{const c=el.dataset.cat;
+      if(active.has(c)){active.delete(c);el.classList.add('off');}else{active.add(c);el.classList.remove('off');}
+      drawMap();};
+  });
+
+  if(!map){
+    map=L.map('map',{zoomControl:true,attributionControl:false}).setView(A.center,12);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
+    L.control.attribution({prefix:false}).addAttribution('© OpenStreetMap · CARTO').addTo(map);
+  }else{
+    map.setView(A.center,12);
+  }
+  drawMap();
+
+  /* charts (destruye anteriores) */
+  Object.values(charts).forEach(c=>{try{c.destroy();}catch(e){}});
+  charts.cat=new Chart(document.getElementById('catChart'),{type:'bar',
+   data:{labels:A.by_cat.map(d=>d.k),datasets:[{data:A.by_cat.map(d=>d.v),
+     backgroundColor:A.by_cat.map(d=>d.c),borderRadius:4,barThickness:14}]},
+   options:{indexAxis:'y',plugins:{legend:{display:false}},
+     scales:{x:{grid:{color:gridc},ticks:{precision:0}},y:{grid:{display:false},ticks:{font:{size:10.5}}}}}});
+  charts.day=new Chart(document.getElementById('dayChart'),{type:'bar',
+   data:{labels:A.by_day.map(d=>d.d.slice(5)),datasets:[{data:A.by_day.map(d=>d.v),
+     backgroundColor:'#E4322B',borderRadius:3}]},
+   options:{plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:9.5}}},
+     y:{grid:{color:gridc},ticks:{precision:0}}}}});
+  charts.hour=new Chart(document.getElementById('hourChart'),{type:'bar',
+   data:{labels:[...Array(24).keys()].map(h=>String(h).padStart(2,'0')),
+     datasets:[{data:A.by_hour,backgroundColor:A.by_hour.map(v=>v?'#2E7CE4':'#1f2530'),borderRadius:2}]},
+   options:{plugins:{legend:{display:false}},scales:{x:{grid:{display:false},ticks:{font:{size:9}}},
+     y:{grid:{color:gridc},ticks:{precision:0}}}}});
+  /* estadística por carro */
+  const bv=A.by_vehicle||[];document.getElementById('vehtag').textContent=bv.length+' carros';
+  charts.veh=new Chart(document.getElementById('vehChart'),{type:'bar',data:{labels:bv.slice(0,15).map(d=>d.veh),datasets:[
+    {label:'Despachos',data:bv.slice(0,15).map(d=>d.dispatches),backgroundColor:'#25B0A8',borderRadius:3,yAxisID:'y'},
+    {label:'P90 respuesta (min)',data:bv.slice(0,15).map(d=>d.resp_p90),type:'line',borderColor:'#F5871F',backgroundColor:'#F5871F',pointRadius:3,yAxisID:'y1',tension:.2,borderWidth:1.5}
+  ]},options:{plugins:{legend:{labels:{boxWidth:12,font:{size:10}}}},scales:{x:{grid:{display:false},ticks:{font:{size:9}}},y:{position:'left',grid:{color:gridc},ticks:{precision:0},title:{display:true,text:'despachos'}},y1:{position:'right',grid:{display:false},title:{display:true,text:'min'}}}}});
+  const vtb=document.querySelector('#vehTbl tbody');vtb.innerHTML='';
+  bv.forEach(d=>{const tr=document.createElement('tr');tr.innerHTML=`<td class="mono" style="color:#25B0A8;font-weight:700">${d.veh}</td><td class="mono" style="text-align:center">${d.dispatches}</td><td class="mono" style="text-align:center">${d.arrivals}</td><td class="mono" style="text-align:center;color:${d.coverage>=95?'#5fd08a':d.coverage>=85?'#f5c15d':'#f0864f'}">${d.coverage.toFixed(1)}%</td><td class="mono" style="text-align:center;color:${d.resp_med<=A.target?'#5fd08a':'#f0864f'}">${d.resp_med?d.resp_med.toFixed(1):'—'}</td><td class="mono" style="text-align:center">${d.resp_p90?d.resp_p90.toFixed(1):'—'}</td><td class="mono" style="text-align:center">${d.compliance.toFixed(1)}%</td>`;vtb.appendChild(tr);});
+  const cl=A.ctrl;
+  charts.ctrl=new Chart(document.getElementById('ctrlChart'),{type:'line',
+   data:{labels:cl.map(d=>d.t),datasets:[
+     {label:'Tiempo respuesta',data:cl.map(d=>d.v),borderColor:'#E8ECF2',backgroundColor:'#E8ECF2',
+      pointRadius:3,pointBackgroundColor:cl.map(d=>d.v>A.ctrl_ucl?'#E4322B':(d.v<=A.target?'#5fd08a':'#F5871F')),
+      pointBorderColor:'#0c0f14',tension:.15,borderWidth:1.4},
+     {label:'Media',data:cl.map(()=>A.ctrl_mu),borderColor:'#2E7CE4',borderDash:[6,4],pointRadius:0,borderWidth:1.2},
+     {label:'LCS I-MR',data:cl.map(()=>A.ctrl_ucl),borderColor:'#E4322B',borderDash:[4,4],pointRadius:0,borderWidth:1.2},
+     {label:'Objetivo '+A.target+'m',data:cl.map(()=>A.target),borderColor:'#5fd08a',borderDash:[2,3],pointRadius:0,borderWidth:1.2},
+   ]},
+   options:{plugins:{legend:{labels:{boxWidth:12,font:{size:10.5}}}},interaction:{mode:'index',intersect:false},
+     scales:{x:{grid:{display:false},ticks:{maxRotation:60,font:{size:8.5}}},
+       y:{grid:{color:gridc},title:{display:true,text:'minutos'}}}}});
+
+  document.getElementById('sixtag').textContent='I-MR · media '+A.ctrl_mu+' · MR̄ '+A.mr_bar+' · LCS '+A.ctrl_ucl;
+  const outliers=A.special_causes;
+  document.getElementById('sixnote').innerHTML=`<b style="color:#e8ecf2">Lectura Black Belt.</b> Carta de individuales y rango móvil: centro ${A.ctrl_mu} min, MR̄ ${A.mr_bar} min y LCS ${A.ctrl_ucl} min. Señales de causa especial: <b>${outliers}</b>. Cobertura 6-3: <b>${A.resp_coverage_pct}%</b>; cumplimiento ≤ ${A.target} min: <b>${A.pct_target}%</b>; P90: <b>${A.resp_p90} min</b>. Cpu unilateral preliminar: <b>${A.cpu}</b>.`;
+
+  /* tabla */
+  document.getElementById('tabletag').textContent=INC.length+' registros';
+  const tb=document.querySelector('#tbl tbody'); tb.innerHTML='';
+  INC.slice().sort((a,b)=>a.hora<b.hora?1:-1).forEach(d=>{
+    const rt=d.resp_min==null?'<span style="color:#5C6675">—</span>':
+      `<span class="mono ${d.resp_min<=A.target?'rt-ok':'rt-bad'}">${d.resp_min.toFixed(1)}</span>`;
+    const tr=document.createElement('tr');
+    const carrosTxt = (d.carros&&d.carros.length)
+      ? d.carros.map(c=>`<span class="mono" style="color:#25B0A8">${c.v}</span> <span class="mono" style="color:${c.r<=A.target?'#5fd08a':'#f0864f'}">${c.r.toFixed(1)}m</span>`).join(' · ')
+      : `<span class="mono" style="color:#5C6675">${d.veh||'—'}</span>`;
+    tr.innerHTML=`<td class="mono" style="color:#B8C0CC">${d.hora}</td>
+      <td class="mono" title="${d.subtipo||''}" style="${d.subtipo?'border-bottom:1px dotted #4A5160;cursor:help':''}">${d.clave||'—'}</td>
+      <td><span class="pill" title="${d.subtipo||d.descriptor||''}" style="background:${d.color}">${d.categoria}</span></td>
+      <td style="color:#B8C0CC">${d.sector||'—'}</td>
+      <td style="min-width:150px">${carrosTxt}</td>
+      <td style="text-align:center">${rt}</td>
+      <td style="color:#96A0AE;max-width:300px">${d.subtipo?'<span style=\"color:#c4ccd6\">'+d.subtipo+'</span> — ':''}${d.desc||d.narrativa||'—'}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+/* modo mapa */
+document.querySelectorAll('.tbtn').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.tbtn').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');mode=b.dataset.mode;drawMap();});
+
+/* ================= SINCRONIZACIÓN Y ADMINISTRACIÓN ================= */
+let RESTRICTED_UNLOCKED=false;
+const $=(id)=>document.getElementById(id);
+function setRestrictedState(open){
+  RESTRICTED_UNLOCKED=open;$('lockRow').style.display=open?'none':'flex';$('upRow').style.display=open?'block':'none';
+  $('reportBtn').disabled=!open;$('goBtn').disabled=!open;$('datesBtn').disabled=!open;
+  $('reportBtn').title=open?'Generar informe institucional del período visible':'Ingrese la clave para habilitar el reporte';
+  $('lockStatus').className='status '+(open?'ok':'');
+  $('lockStatus').textContent=open?'Acceso concedido: publicación global y reporte PDF habilitados.':'Módulos restringidos bloqueados.';
+}
+function apiHeaders(json=true){const h={'Authorization':'Bearer '+ADMIN_TOKEN};if(json)h['Content-Type']='application/json';return h;}
+async function loadAdminEndpoint(){
+  if(ADMIN_API)return ADMIN_API;
+  try{const r=await fetch(ADMIN_ENDPOINT_URL+'?v='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error('sin endpoint');const j=await r.json();ADMIN_API=safeAdminApi(j.url||'');if(ADMIN_API)sessionStorage.setItem('cbmelAdminApi',ADMIN_API);}
+  catch(e){ADMIN_API='';}
+  return ADMIN_API;
+}
+async function fetchWithTimeout(url,opts={},ms=7000){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);try{return await fetch(url,{...opts,signal:c.signal});}finally{clearTimeout(t);}}
+async function fetchSharedDashboard(force=false){
+  let payload=null;
+  if(ADMIN_API){
+    try{const r=await fetchWithTimeout(ADMIN_API+'/api/public/dashboard?v='+Date.now(),{cache:'no-store'},5000);if(r.ok)payload=await r.json();}catch(e){}
+  }
+  if(!payload){
+    try{const r=await fetch(STATIC_DATA_URL+'?v='+Date.now(),{cache:'no-store'});if(r.ok)payload=await r.json();}catch(e){}
+  }
+  if(payload&&payload.incidents&&payload.incidents.length){
+    const version=String(payload.meta?.version||'');
+    if(force||version!==CURRENT_VERSION)renderAll(payload);
+    return true;
+  }
+  $('syncState').textContent='Sin datos compartidos disponibles';return false;
+}
+async function tryUnlock(){
+  if(!ADMIN_API)await loadAdminEndpoint();
+  if(!ADMIN_API){$('lockStatus').className='status err';$('lockStatus').textContent='Backend Colab desconectado. Ejecute el notebook para administrar.';return;}
+  $('lockStatus').className='status';$('lockStatus').textContent='Validando acceso…';
+  try{
+    const r=await fetchWithTimeout(ADMIN_API+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('pass').value})},10000);
+    const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'No fue posible iniciar sesión.');
+    ADMIN_TOKEN=j.token;sessionStorage.setItem('cbmelAdminToken',ADMIN_TOKEN);$('pass').value='';setRestrictedState(true);if(j.payload)renderAll(j.payload);
+  }catch(err){$('lockStatus').className='status err';$('lockStatus').textContent=err.message;$('pass').value='';}
+}
+$('unlockBtn').addEventListener('click',tryUnlock);$('pass').addEventListener('keydown',e=>{if(e.key==='Enter')tryUnlock();});
+$('lockBtn').addEventListener('click',()=>{ADMIN_TOKEN='';sessionStorage.removeItem('cbmelAdminToken');setRestrictedState(false);});
+$('csvInput').addEventListener('change',e=>{const file=e.target.files[0];$('fileName').textContent=file?'Archivo: '+file.name:'📂 Seleccionar CSV…';});
+$('goBtn').addEventListener('click',async()=>{
+  const file=$('csvInput').files[0];if(!file){$('status').className='status err';$('status').textContent='Seleccione primero el nuevo CSV.';return;}
+  const fd=new FormData();fd.append('file',file);fd.append('date_from',$('desde').value||'');fd.append('date_to',$('hasta').value||'');
+  $('goBtn').disabled=true;$('datesBtn').disabled=true;$('status').className='status';$('status').textContent='Procesando CSV, respaldando en Drive y publicando en GitHub…';
+  try{const r=await fetchWithTimeout(ADMIN_API+'/api/admin/upload',{method:'POST',headers:apiHeaders(false),body:fd},120000);const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'Falló la publicación.');renderAll(j.payload);$('status').className='status ok';$('status').textContent=j.message+' Los demás visitantes se actualizarán automáticamente.';$('csvInput').value='';$('fileName').textContent='📂 Seleccionar CSV…';}
+  catch(err){$('status').className='status err';$('status').textContent='Error: '+err.message;}
+  finally{$('goBtn').disabled=false;$('datesBtn').disabled=false;}
+});
+$('datesBtn').addEventListener('click',async()=>{
+  $('goBtn').disabled=true;$('datesBtn').disabled=true;$('status').className='status';$('status').textContent='Actualizando período sin volver a cargar el CSV…';
+  try{const r=await fetchWithTimeout(ADMIN_API+'/api/admin/dates',{method:'POST',headers:apiHeaders(true),body:JSON.stringify({date_from:$('desde').value||null,date_to:$('hasta').value||null})},60000);const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'Falló el cambio de fechas.');renderAll(j.payload);$('status').className='status ok';$('status').textContent=j.message+' El cambio es común para todos los visitantes.';}
+  catch(err){$('status').className='status err';$('status').textContent='Error: '+err.message;}
+  finally{$('goBtn').disabled=false;$('datesBtn').disabled=false;}
+});
+
+/* ================= INFORME INSTITUCIONAL PDF ================= */
+function pdfSafe(s){return String(s??'').replace(/[–—]/g,'-').replace(/≤/g,'<=').replace(/≥/g,'>=').replace(/μ/g,'media').replace(/σ/g,'desv.').replace(/\s+/g,' ').trim();}
+function pdfColor(hex){const h=(hex||'#5B6472').replace('#','');return [parseInt(h.slice(0,2),16)||91,parseInt(h.slice(2,4),16)||100,parseInt(h.slice(4,6),16)||114];}
+function reportSection(doc,title,y=45){doc.setTextColor(30,39,50);doc.setFont('helvetica','bold');doc.setFontSize(14);doc.text(pdfSafe(title),16,y);doc.setDrawColor(153,22,35);doc.setLineWidth(.8);doc.line(16,y+3,doc.internal.pageSize.getWidth()-16,y+3);return y+10;}
+function reportParagraph(doc,text,x,y,w,size=9.2){doc.setFont('helvetica','normal');doc.setFontSize(size);doc.setTextColor(55,65,78);const lines=doc.splitTextToSize(pdfSafe(text),w);doc.text(lines,x,y);return y+lines.length*size*.42+2;}
+function reportKpi(doc,x,y,w,h,label,value,sub,color=[153,22,35]){doc.setFillColor(248,249,250);doc.setDrawColor(220,224,228);doc.roundedRect(x,y,w,h,2,2,'FD');doc.setFillColor(...color);doc.rect(x,y,2.2,h,'F');doc.setTextColor(92,101,112);doc.setFontSize(7.3);doc.setFont('helvetica','bold');doc.text(pdfSafe(label).toUpperCase(),x+5,y+6);doc.setTextColor(25,32,42);doc.setFontSize(17);doc.text(pdfSafe(value),x+5,y+15);doc.setFont('helvetica','normal');doc.setTextColor(112,120,130);doc.setFontSize(7.2);doc.text(pdfSafe(sub),x+5,y+h-4);}
+function drawHBar(doc,x,y,w,h,data,title,maxItems=8){doc.setTextColor(45,54,65);doc.setFont('helvetica','bold');doc.setFontSize(9);doc.text(pdfSafe(title),x,y);const rows=data.slice(0,maxItems),max=Math.max(...rows.map(d=>d.value),1),labelW=Math.min(55,w*.43),barW=w-labelW-17,rowH=(h-8)/Math.max(rows.length,1);doc.setFont('helvetica','normal');doc.setFontSize(6.8);rows.forEach((d,i)=>{const yy=y+7+i*rowH;doc.setTextColor(65,74,86);doc.text(pdfSafe(d.label).slice(0,38),x,yy+3);doc.setFillColor(235,237,240);doc.rect(x+labelW,yy,barW,3.8,'F');doc.setFillColor(...pdfColor(d.color||'#991623'));doc.rect(x+labelW,yy,barW*d.value/max,3.8,'F');doc.setTextColor(35,43,52);doc.text(pdfSafe(d.display??d.value),x+w,yy+3,{align:'right'});});}
+function drawBars(doc,x,y,w,h,vals,labels,title,color=[45,124,228]){doc.setTextColor(45,54,65);doc.setFont('helvetica','bold');doc.setFontSize(9);doc.text(pdfSafe(title),x,y);const max=Math.max(...vals,1),base=y+h,plotH=h-10,bw=w/Math.max(vals.length,1);doc.setDrawColor(220,224,228);doc.line(x,y+7,x,base);doc.line(x,base,x+w,base);vals.forEach((v,i)=>{const bh=plotH*v/max;doc.setFillColor(...color);doc.rect(x+i*bw+1,base-bh,Math.max(1,bw-2),bh,'F');if(vals.length<=16){doc.setFontSize(6);doc.setTextColor(90,98,108);doc.text(pdfSafe(labels[i]),x+i*bw+bw/2,base+4,{align:'center'});}});}
+function drawLine(doc,x,y,w,h,data,title){doc.setTextColor(45,54,65);doc.setFont('helvetica','bold');doc.setFontSize(9);doc.text(pdfSafe(title),x,y);const vals=data.map(d=>d.v),max=Math.max(...vals,1),min=0,px=(i)=>x+(data.length<=1?w/2:i*w/(data.length-1)),py=(v)=>y+8+(h-8)*(1-(v-min)/(max-min||1));doc.setDrawColor(220,224,228);doc.line(x,y+8,x,y+h);doc.line(x,y+h,x+w,y+h);doc.setDrawColor(153,22,35);doc.setLineWidth(1);for(let i=1;i<data.length;i++)doc.line(px(i-1),py(vals[i-1]),px(i),py(vals[i]));doc.setFillColor(153,22,35);data.forEach((d,i)=>{doc.circle(px(i),py(d.v),1.3,'F');if(data.length<=12){doc.setTextColor(85,94,105);doc.setFontSize(6);doc.text(pdfSafe(d.d.slice(5)),px(i),y+h+4,{align:'center'});}});}
+function drawControl(doc,x,y,w,h){const data=A.ctrl;if(!data.length)return;doc.setTextColor(45,54,65);doc.setFont('helvetica','bold');doc.setFontSize(9);doc.text('Carta I-MR - tiempo de primer arribo',x,y);const max=Math.max(A.ctrl_ucl,A.resp_max,A.target)*1.08,px=i=>x+(data.length<=1?w/2:i*w/(data.length-1)),py=v=>y+8+(h-8)*(1-v/max);doc.setDrawColor(220,224,228);doc.line(x,y+8,x,y+h);doc.line(x,y+h,x+w,y+h);[[A.ctrl_mu,[46,124,228]],[A.ctrl_ucl,[228,50,43]],[A.target,[47,174,106]]].forEach(([v,c])=>{doc.setDrawColor(...c);doc.setLineDashPattern([2,2],0);doc.line(x,py(v),x+w,py(v));});doc.setLineDashPattern([],0);doc.setDrawColor(48,57,68);for(let i=1;i<data.length;i++)doc.line(px(i-1),py(data[i-1].v),px(i),py(data[i].v));data.forEach((d,i)=>{const c=d.flags.length?[228,50,43]:(d.v<=A.target?[47,174,106]:[245,135,31]);doc.setFillColor(...c);doc.circle(px(i),py(d.v),1.25,'F');});doc.setFontSize(6.4);doc.setTextColor(90,98,108);doc.text(`Media ${A.ctrl_mu} | LCS ${A.ctrl_ucl} | Objetivo ${A.target} | señales ${A.special_causes}`,x,y+h+4);}
+function worldPixel(lat,lon,z){
+  const scale=256*Math.pow(2,z),s=Math.sin(Math.max(-85.0511,Math.min(85.0511,lat))*Math.PI/180);
+  return {x:(lon+180)/360*scale,y:(0.5-Math.log((1+s)/(1-s))/(4*Math.PI))*scale};
+}
+function loadMapTile(url,timeout=6500){return new Promise(resolve=>{const img=new Image();let done=false;const finish=v=>{if(done)return;done=true;clearTimeout(timer);resolve(v)};img.crossOrigin='anonymous';img.onload=()=>finish(img);img.onerror=()=>finish(null);const timer=setTimeout(()=>finish(null),timeout);img.src=url;});}
+async function buildReportMapImage(width=1500,height=720){
+  const pts=INC.filter(d=>Number.isFinite(+d.lat)&&Number.isFinite(+d.lon));if(!pts.length)return null;
+  let zoom=14,bounds=null;
+  for(let z=15;z>=5;z--){const wp=pts.map(d=>worldPixel(+d.lat,+d.lon,z)),xs=wp.map(p=>p.x),ys=wp.map(p=>p.y),bw=Math.max(...xs)-Math.min(...xs),bh=Math.max(...ys)-Math.min(...ys);if(bw<=width*.76&&bh<=height*.72){zoom=z;break;}}
+  const wp=pts.map(d=>({...worldPixel(+d.lat,+d.lon,zoom),d})),xs=wp.map(p=>p.x),ys=wp.map(p=>p.y);
+  let minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+  const rawW=Math.max(maxX-minX,120),rawH=Math.max(maxY-minY,90),padX=Math.max(rawW*.13,65),padY=Math.max(rawH*.15,55);
+  minX-=padX;maxX+=padX;minY-=padY;maxY+=padY;
+  const target=width/height,current=(maxX-minX)/(maxY-minY);
+  if(current<target){const needed=(maxY-minY)*target-(maxX-minX);minX-=needed/2;maxX+=needed/2;}else{const needed=(maxX-minX)/target-(maxY-minY);minY-=needed/2;maxY+=needed/2;}
+  const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;const ctx=canvas.getContext('2d');
+  ctx.fillStyle='#eef1f2';ctx.fillRect(0,0,width,height);
+  const sx=width/(maxX-minX),sy=height/(maxY-minY),tileMinX=Math.floor(minX/256),tileMaxX=Math.floor(maxX/256),tileMinY=Math.floor(minY/256),tileMaxY=Math.floor(maxY/256),n=Math.pow(2,zoom);
+  const jobs=[];
+  for(let ty=tileMinY;ty<=tileMaxY;ty++)for(let tx=tileMinX;tx<=tileMaxX;tx++){if(ty<0||ty>=n)continue;const wrapped=((tx%n)+n)%n,sub=['a','b','c','d'][Math.abs(tx+ty)%4],url=`https://${sub}.basemaps.cartocdn.com/light_all/${zoom}/${wrapped}/${ty}.png`;jobs.push({tx,ty,p:loadMapTile(url)});}
+  const loaded=await Promise.all(jobs.map(async j=>({...j,img:await j.p})));
+  const validTiles=loaded.filter(j=>j.img);if(!validTiles.length)return null;
+  validTiles.forEach(j=>{const dx=(j.tx*256-minX)*sx,dy=(j.ty*256-minY)*sy;ctx.drawImage(j.img,dx,dy,256*sx,256*sy);});
+  // Velo muy leve para uniformar la cartografía en impresión.
+  ctx.fillStyle='rgba(255,255,255,.08)';ctx.fillRect(0,0,width,height);
+  // Marcadores: halo blanco + color oficial de categoría.
+  wp.forEach(p=>{const px=(p.x-minX)*sx,py=(p.y-minY)*sy;ctx.beginPath();ctx.arc(px,py,9,0,Math.PI*2);ctx.fillStyle='rgba(255,255,255,.96)';ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='rgba(47,57,68,.45)';ctx.stroke();ctx.beginPath();ctx.arc(px,py,6.2,0,Math.PI*2);ctx.fillStyle=p.d.color||'#5B6472';ctx.fill();});
+  // Norte, escala visual y atribución.
+  ctx.save();ctx.translate(34,35);ctx.fillStyle='rgba(255,255,255,.93)';ctx.strokeStyle='rgba(70,78,88,.35)';ctx.lineWidth=1;ctx.beginPath();ctx.roundRect(-18,-22,36,50,6);ctx.fill();ctx.stroke();ctx.fillStyle='#26313c';ctx.font='700 17px Arial';ctx.textAlign='center';ctx.fillText('N',0,-4);ctx.beginPath();ctx.moveTo(0,2);ctx.lineTo(-8,19);ctx.lineTo(0,15);ctx.lineTo(8,19);ctx.closePath();ctx.fill();ctx.restore();
+  ctx.fillStyle='rgba(255,255,255,.86)';ctx.fillRect(width-345,height-30,335,22);ctx.fillStyle='#4f5965';ctx.font='14px Arial';ctx.textAlign='right';ctx.fillText('© OpenStreetMap contributors · © CARTO',width-18,height-14);
+  return canvas.toDataURL('image/jpeg',.92);
+}
+function drawSpatialFallback(doc,x,y,w,h){
+  const pts=INC.filter(d=>Number.isFinite(+d.lat)&&Number.isFinite(+d.lon));const xs=pts.map(d=>+d.lon),ys=pts.map(d=>+d.lat),xmin=Math.min(...xs),xmax=Math.max(...xs),ymin=Math.min(...ys),ymax=Math.max(...ys);
+  doc.setFillColor(239,242,243);doc.setDrawColor(205,211,216);doc.rect(x,y,w,h,'FD');
+  doc.setDrawColor(218,222,225);doc.setLineWidth(.25);for(let i=1;i<8;i++){doc.line(x+i*w/8,y,x+i*w/8,y+h);doc.line(x,y+i*h/8,x+w,y+i*h/8);}
+  pts.forEach(d=>{const px=x+4+(+d.lon-xmin)/(xmax-xmin||1)*(w-8),py=y+4+(ymax-(+d.lat))/(ymax-ymin||1)*(h-8);doc.setFillColor(255,255,255);doc.circle(px,py,1.7,'F');doc.setFillColor(...pdfColor(d.color));doc.circle(px,py,1.05,'F');});
+  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(100,108,118);doc.text('Cartografía base no disponible durante la generación; se conserva la distribución geográfica.',x+w/2,y+h/2,{align:'center'});
+}
+function drawReportMap(doc,x,y,w,h,mapImage){
+  doc.setTextColor(45,54,65);doc.setFont('helvetica','bold');doc.setFontSize(9.5);doc.text('Mapa de emergencias georreferenciadas',x,y);
+  doc.setFillColor(244,246,247);doc.setDrawColor(206,212,217);doc.setLineWidth(.5);doc.rect(x,y+5,w,h-5,'FD');
+  if(mapImage){try{doc.addImage(mapImage,'JPEG',x+1,y+6,w-2,h-7,'report-map','FAST');}catch(e){drawSpatialFallback(doc,x+1,y+6,w-2,h-7);}}else drawSpatialFallback(doc,x+1,y+6,w-2,h-7);
+}
+function drawMapLegend(doc,x,y,w,data){
+  const items=(data||[]).filter(d=>d&&d.v>0),cols=3,colW=w/cols,rowH=6.2,rows=Math.ceil(items.length/cols);
+  doc.setFont('helvetica','bold');doc.setFontSize(8.7);doc.setTextColor(38,48,58);doc.text('Categorías de emergencia (clave 10)',x,y);y+=5;
+  items.forEach((d,i)=>{const col=i%cols,row=Math.floor(i/cols),xx=x+col*colW,yy=y+row*rowH;doc.setFillColor(...pdfColor(d.c));doc.roundedRect(xx,yy-2.9,3.7,3.7,.6,.6,'F');doc.setFont('helvetica','normal');doc.setFontSize(6.7);doc.setTextColor(48,57,67);let label=pdfSafe(d.k);if(label.length>30)label=label.slice(0,27)+'...';doc.text(label,xx+5,yy);doc.setFont('helvetica','bold');doc.setTextColor(84,92,102);doc.text(`${d.v} (${d.share}%)`,xx+colW-2,yy,{align:'right'});});
+  y+=rows*rowH+1.5;doc.setDrawColor(221,225,228);doc.line(x,y,x+w,y);y+=3.3;doc.setFont('helvetica','normal');doc.setFontSize(6.4);doc.setTextColor(103,111,121);doc.text('Fuente cartográfica: OpenStreetMap / CARTO. Ubicación según coordenadas registradas en la bitácora operativa CBMEL.',x,y);return y+4;
+}
+function addReportHeaders(doc,reportId,generated){const total=doc.getNumberOfPages();for(let p=1;p<=total;p++){doc.setPage(p);const w=doc.internal.pageSize.getWidth(),h=doc.internal.pageSize.getHeight();doc.setFont('helvetica','normal');doc.setFontSize(7.2);doc.setTextColor(82,89,99);doc.text('Cuerpo de Bomberos de Melipilla - Departamento de Estadísticas',16,7);doc.text(`Página ${p} de ${total}`,w-16,7,{align:'right'});doc.setFillColor(153,22,35);doc.rect(0,11,w,23,'F');doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(14.5);doc.text('CUERPO DE BOMBEROS DE MELIPILLA',16,21);doc.setFontSize(8.5);doc.text('DEPARTAMENTO DE ESTADÍSTICAS',16,28);doc.setDrawColor(210,214,220);doc.line(16,h-11,w-16,h-11);doc.setFont('helvetica','normal');doc.setFontSize(6.8);doc.setTextColor(105,112,122);doc.text(`Informe ${reportId} | Generado ${generated} | Fuente: bitácora operativa CBMEL`,16,h-6);doc.text('Uso institucional - objetivo de respuesta configurable',w-16,h-6,{align:'right'});}}
+async function generarReportePDF(){
+  if(!RESTRICTED_UNLOCKED){alert('Acceso denegado. Ingrese la clave autorizada.');return;}
+  if(!window.jspdf||!window.jspdf.jsPDF){alert('No se cargó la librería PDF. Verifique la conexión a internet y recargue la página.');return;}
+  const btn=$('reportBtn'),old=btn.textContent;btn.disabled=true;btn.textContent='Generando informe...';
+  try{
+    const {jsPDF}=window.jspdf,doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4',compress:true});
+    btn.textContent='Preparando cartografía...';
+    const reportMapImage=await buildReportMapImage().catch(err=>{console.warn('No se pudo cargar la cartografía base:',err);return null;});
+    btn.textContent='Construyendo informe...';
+    const now=new Date(),generated=`${pad(now.getDate())}-${pad(now.getMonth()+1)}-${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}`,reportId=`DE-${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+    let y=reportSection(doc,'Informe estadístico y operacional de emergencias',45);doc.setFontSize(10);doc.setTextColor(83,91,101);doc.text(`Período analizado: ${A.fecha_ini} a ${A.fecha_fin} | ${A.total} emergencias`,16,y);y+=9;
+    const cw=56,g=5;reportKpi(doc,16,y,cw,25,'Emergencias',A.total,`${A.daily_avg} por día`);reportKpi(doc,16+cw+g,y,cw,25,'Respuesta mediana',`${A.resp_med} min`,`P90 ${A.resp_p90} min`,[245,135,31]);reportKpi(doc,16+2*(cw+g),y,cw,25,`Cumplimiento <= ${A.target} min`,`${A.pct_target}%`,`${A.late_n} tardíos`,[37,176,168]);y+=31;reportKpi(doc,16,y,cw,25,'Cobertura 6-3',`${A.resp_coverage_pct}%`,`${A.missing_response} sin arribo`,[46,124,228]);reportKpi(doc,16+cw+g,y,cw,25,'Despachos de carros',A.veh_total,`${A.unique_vehicles} unidades`,[76,81,96]);reportKpi(doc,16+2*(cw+g),y,cw,25,'Duración mediana',A.duration_n?`${A.duration_med} min`:'Sin dato',`${A.duration_n} cierres`,[161,92,224]);y+=33;
+    const summary=`En el período se registraron ${A.total} emergencias georreferenciadas, con ${A.veh_total} despachos de material mayor. La mediana de primer arribo fue ${A.resp_med} minutos y el percentil 90 alcanzó ${A.resp_p90} minutos. El ${A.pct_target}% de los arribos con registro cumplió el objetivo configurable de ${A.target} minutos. La trazabilidad 6-3 fue ${A.resp_coverage_pct}%. La categoría principal fue ${A.by_cat[0]?.k||'sin información'} (${A.by_cat[0]?.share||0}%).`;
+    y=reportParagraph(doc,summary,16,y,178,9.3)+2;doc.setFont('helvetica','bold');doc.setTextColor(30,39,50);doc.setFontSize(10);doc.text('Hallazgos priorizados para decisión',16,y);y+=4;
+    doc.autoTable({startY:y,margin:{left:16,right:16,top:42,bottom:15},head:[['Prioridad','Dimensión','Hallazgo y evidencia','Decisión sugerida']],body:A.findings.slice(0,6).map(f=>[f.level==='high'?'ALTA':f.level==='medium'?'MEDIA':f.level==='positive'?'FORTALEZA':'VIGILAR',f.dimension,`${f.title}. ${f.evidence}`,f.action]),styles:{font:'helvetica',fontSize:7.2,cellPadding:2.2,valign:'top',textColor:[45,54,65]},headStyles:{fillColor:[153,22,35],textColor:255,fontStyle:'bold'},columnStyles:{0:{cellWidth:18,fontStyle:'bold'},1:{cellWidth:29},2:{cellWidth:64},3:{cellWidth:67}},alternateRowStyles:{fillColor:[247,248,249]}});
+
+    doc.addPage('a4','portrait');y=reportSection(doc,'1. Perfil de demanda y concentración',45);drawHBar(doc,16,y,84,76,A.by_cat.map(d=>({label:d.k,value:d.v,display:`${d.v} (${d.share}%)`,color:d.c})),'Pareto de categorías',9);drawHBar(doc,110,y,84,76,A.by_sector.map(d=>({label:d.sector,value:d.n,display:`${d.n} (${d.share}%)`,color:'#2E7CE4'})),'Sectores con mayor recurrencia',9);y+=88;drawLine(doc,16,y,178,52,A.by_day,'Emergencias por día');y+=66;drawBars(doc,16,y,178,42,A.by_hour,[...Array(24).keys()].map(h=>String(h).padStart(2,'0')),'Distribución horaria (0-23 h)',[46,124,228]);
+
+    doc.addPage('a4','portrait');y=reportSection(doc,'2. Desempeño operacional y control estadístico',45);drawControl(doc,16,y,178,65);y+=76;const caps=[['Cobertura de respuesta',`${A.resp_coverage_pct}%`],['P25 - P75',`${A.resp_p25} - ${A.resp_p75} min`],['IQR',`${A.resp_iqr} min`],['Coef. variación',`${A.resp_cv}%`],['Cpu unilateral',`${A.cpu}`],['DPMO sobre objetivo',A.dpmo.toLocaleString('es-CL')]];caps.forEach((c,i)=>reportKpi(doc,16+(i%3)*61,y+Math.floor(i/3)*28,56,23,c[0],c[1],i===4?'Capacidad preliminar':i===5?'Oportunidades fuera de objetivo':'Métrica robusta',[i===4?245:46,i===4?135:124,i===4?31:228]));y+=62;doc.autoTable({startY:y,margin:{left:16,right:16,top:42,bottom:15},head:[['Franja','Emergencias','Con 6-3','Mediana','P90',`Cumple <= ${A.target} min`]],body:A.by_shift.map(s=>[s.shift,s.n,s.response_n,s.resp_med?`${s.resp_med} min`:'-',s.resp_p90?`${s.resp_p90} min`:'-',`${s.compliance}%`]),styles:{fontSize:8,cellPadding:2.5},headStyles:{fillColor:[49,59,72],textColor:255},alternateRowStyles:{fillColor:[247,248,249]}});y=doc.lastAutoTable.finalY+8;doc.setFont('helvetica','bold');doc.setFontSize(9.5);doc.setTextColor(30,39,50);doc.text('Emergencias con mayor tiempo de primer arribo',16,y);doc.autoTable({startY:y+3,margin:{left:16,right:16,top:42,bottom:15},head:[['Fecha/hora','Clave','Sector','Primer arribo','Carros']],body:INC.filter(d=>d.resp_min!=null).sort((a,b)=>b.resp_min-a.resp_min).slice(0,10).map(d=>[d.hora,d.clave,d.sector,`${d.resp_min.toFixed(1)} min`,(d.carros||[]).map(c=>`${c.v} ${c.r.toFixed(1)}m`).join(', ')]),styles:{fontSize:7.3,cellPadding:2},headStyles:{fillColor:[153,22,35],textColor:255},columnStyles:{0:{cellWidth:29},1:{cellWidth:18},2:{cellWidth:55},3:{cellWidth:24},4:{cellWidth:52}},alternateRowStyles:{fillColor:[247,248,249]}});
+
+    doc.addPage('a4','portrait');y=reportSection(doc,'3. Desempeño de material mayor',45);drawHBar(doc,16,y,178,73,A.by_vehicle.map(v=>({label:v.veh,value:v.dispatches,display:`${v.dispatches} desp. | P90 ${v.resp_p90||'-'}m`,color:v.coverage>=95?'#25B0A8':v.coverage>=85?'#F5871F':'#E4322B'})),'Utilización y respuesta por carro',15);y+=83;doc.autoTable({startY:y,margin:{left:12,right:12,top:42,bottom:15},head:[['Carro','Desp.','Arribos','Cob. 6-3','Mediana','P90',`<= ${A.target}m`,'Categoría principal']],body:A.by_vehicle.map(v=>[v.veh,v.dispatches,v.arrivals,`${v.coverage}%`,v.resp_med?`${v.resp_med}m`:'-',v.resp_p90?`${v.resp_p90}m`:'-',`${v.compliance}%`,v.top_category]),styles:{fontSize:6.8,cellPadding:1.8,valign:'middle'},headStyles:{fillColor:[153,22,35],textColor:255},columnStyles:{0:{cellWidth:16,fontStyle:'bold'},1:{cellWidth:14},2:{cellWidth:14},3:{cellWidth:19},4:{cellWidth:17},5:{cellWidth:15},6:{cellWidth:16},7:{cellWidth:71}},alternateRowStyles:{fillColor:[247,248,249]}});
+
+    doc.addPage('a4','portrait');y=reportSection(doc,'4. Clasificación, territorio y calidad de datos',45);drawReportMap(doc,16,y,178,92,reportMapImage);y+=99;y=drawMapLegend(doc,16,y,178,A.by_cat);doc.autoTable({startY:y,margin:{left:12,right:12,top:42,bottom:15},head:[['Categoría','N','%','Con 6-3','Mediana','P90',`Cumple <= ${A.target}m`,'Acum.']],body:A.by_cat.map(c=>[c.k,c.v,`${c.share}%`,c.response_n,c.resp_med?`${c.resp_med}m`:'-',c.resp_p90?`${c.resp_p90}m`:'-',`${c.compliance}%`,`${c.cum_pct}%`]),styles:{fontSize:6.8,cellPadding:1.8},headStyles:{fillColor:[49,59,72],textColor:255},columnStyles:{0:{cellWidth:62},1:{cellWidth:12},2:{cellWidth:13},3:{cellWidth:16},4:{cellWidth:18},5:{cellWidth:16},6:{cellWidth:19},7:{cellWidth:15}},alternateRowStyles:{fillColor:[247,248,249]}});y=doc.lastAutoTable.finalY+7;doc.setFont('helvetica','bold');doc.setFontSize(9.5);doc.setTextColor(30,39,50);doc.text('Indicadores de calidad y gobernanza del dato',16,y);doc.autoTable({startY:y+3,margin:{left:16,right:16,top:42,bottom:15},head:[['Indicador','Resultado','Lectura de gestión']],body:[['Cobertura geográfica',`${pct(A.con_coord,A.total)}%`,'Disponibilidad de coordenadas para análisis espacial'],['Cobertura estado 6-3',`${A.resp_coverage_pct}%`,`${A.missing_response} emergencias sin primer arribo calculable`],['Llamados 10-8',`${A.unclassified_pct}%`,'Proporción que limita análisis causal por tipología'],['Cobertura de cierre',`${pct(A.duration_n,A.total)}%`,`${A.total-A.duration_n} emergencias sin duración completa`],['Señales I-MR',A.special_causes,'Casos que requieren revisión por causa especial']],styles:{fontSize:7.5,cellPadding:2.3},headStyles:{fillColor:[153,22,35],textColor:255},columnStyles:{0:{cellWidth:48},1:{cellWidth:34},2:{cellWidth:96}},alternateRowStyles:{fillColor:[247,248,249]}});
+
+    doc.addPage('a4','landscape');y=reportSection(doc,'5. Detalle de emergencias y material mayor',45);doc.autoTable({startY:y,margin:{left:10,right:10,top:42,bottom:15},head:[['Fecha/hora','Clave','Categoría','Sector / dirección','Carros y arribo','1er arribo','Control','Cierre','Descripción operacional']],body:INC.slice().sort((a,b)=>a.hora.localeCompare(b.hora)).map(d=>[d.hora,d.clave||'-',d.categoria,d.desc||d.sector,(d.carros&&d.carros.length)?d.carros.map(c=>`${c.v} (${c.r.toFixed(1)}m)`).join(', '):(d.veh||'-'),d.resp_min==null?'-':`${d.resp_min.toFixed(1)}m`,d.control_min==null?'-':`${d.control_min.toFixed(1)}m`,d.cierre_min==null?'-':`${d.cierre_min.toFixed(1)}m`,d.narrativa||d.subtipo||'-']),styles:{fontSize:5.7,cellPadding:1.45,valign:'top',overflow:'linebreak'},headStyles:{fillColor:[153,22,35],textColor:255,fontSize:6},columnStyles:{0:{cellWidth:27},1:{cellWidth:15},2:{cellWidth:37},3:{cellWidth:51},4:{cellWidth:45},5:{cellWidth:20},6:{cellWidth:18},7:{cellWidth:18},8:{cellWidth:55}},alternateRowStyles:{fillColor:[246,248,249]},showHead:'everyPage'});
+
+    doc.addPage('a4','portrait');y=reportSection(doc,'6. Metodología, criterios e interpretación',45);const methodology=[
+      'Unidad de análisis: una emergencia creada en el sistema, identificada por la columna Despacho y separada por su hora de creación cuando una descripción se repite.',
+      'Tiempo de primer arribo: mínimo tiempo entre creación y estado 6-3 por carro. Cuando el texto no informa duración explícita, se calcula con las marcas horarias.',
+      'Carta I-MR: límites de la carta de individuales estimados con rango móvil promedio (LCS = media + 2,66 MR promedio; LCI truncado en cero). Se revisan además rachas y tendencias como señales de causa especial.',
+      `Capacidad: Cpu y DPMO se calculan contra el objetivo superior configurable de ${A.target} minutos. Son indicadores descriptivos preliminares; no sustituyen validación de distribución, sistema de medición ni definición institucional del estándar.`,
+      'Hallazgos: reglas automatizadas de priorización. No prueban causalidad. La investigación debe incorporar distancia, condiciones meteorológicas y viales, disponibilidad de personal/conductor, tipo de emergencia y simultaneidad.',
+      'Privacidad: el informe utiliza información operacional agregada; no incorpora correos de usuarios del sistema.'
+    ];methodology.forEach((t,i)=>{doc.setFillColor(i%2?248:252,249,250);doc.setDrawColor(225,228,232);doc.roundedRect(16,y,178,25,2,2,'FD');doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(153,22,35);doc.text(String(i+1),20,y+7);y=reportParagraph(doc,t,28,y+7,160,8.3)+8;});
+    addReportHeaders(doc,reportId,generated);doc.setProperties({title:`Informe estadístico CBMEL ${A.fecha_ini} a ${A.fecha_fin}`,subject:'Emergencias y desempeño operacional',author:'Cuerpo de Bomberos de Melipilla - Departamento de Estadísticas',creator:'Dashboard CBMEL'});doc.save(`CBMEL_Informe_Estadistico_${A.fecha_ini.replaceAll('-','')}_${A.fecha_fin.replaceAll('-','')}.pdf`);
+  }catch(err){console.error(err);alert('No fue posible generar el informe: '+err.message);}finally{btn.disabled=!RESTRICTED_UNLOCKED;btn.textContent=old;}
+}
+$('reportBtn').addEventListener('click',generarReportePDF);setRestrictedState(false);
+
+/* ================= INICIO ================= */
+async function boot(){
+  renderAll(INITIAL);
+  await loadAdminEndpoint();
+  await fetchSharedDashboard(true);
+  setInterval(async()=>{if(!ADMIN_API)await loadAdminEndpoint();await fetchSharedDashboard(false);},POLL_MS);
+}
+boot();
+</script>
+</body>
+</html>
